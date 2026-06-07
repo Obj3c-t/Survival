@@ -53,26 +53,35 @@ player_world_x = WORLD_WIDTH // 2
 player_world_y = WORLD_HEIGHT // 2
 player_speed = 3 * TILE_SCALE
 
+world_blueprints = {}
+active_resources = []
 
-resources_list = []
+# resources_list = []
 # GRID_SIZE = 32
 
-def generate_map():
-	resources_list.clear()
+def generate_all_biomes_at_start():
+	world_blueprints.clear()
+	for biome_idx in range(len(biomes)):
+		world_blueprints[biome_idx] = []
+		for y in range(0, WORLD_HEIGHT, TILE_SIZE):
+			for x in range(0, WORLD_WIDTH, TILE_SIZE):
+				if abs(x - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(y - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
+					continue
 
-	for y in range(0, WORLD_HEIGHT, TILE_SIZE):
-		for x in range(0, WORLD_WIDTH, TILE_SIZE):
-			if abs(x - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(y - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
-				continue
+				spawn_roll = random.randint(1, 100)
 
-			spawn_roll = random.randint(1, 100)
+				if spawn_roll <= 4: # 4% chance to spawn
+					world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
+				elif spawn_roll <=6: # 2% chance to spawn
+					world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
+def load_current_biome_objects():
+	active_resources.clear()
+	blueprint_list = world_blueprints[current_biome_index]
+	for data in blueprint_list:
+		active_resources.append(Resource(data["x"], data["y"], data["type"]))
 
-			if spawn_roll <= 4: # 4% chance to spawn
-				resources_list.append(Resource(x, y, "tree"))
-			elif spawn_roll <=6: # 2% chance to spawn
-				resources_list.append(Resource(x, y, "rock"))
-
-generate_map()
+generate_all_biomes_at_start()
+load_current_biome_objects()
 
 while True:
 	for event in pygame.event.get():
@@ -98,14 +107,14 @@ while True:
 	if player_world_x > WORLD_WIDTH - player_width:
 		if current_biome_index +1 < len(biomes):
 			current_biome_index += 1
-			generate_map()
+			load_current_biome_objects()
 			player_world_x = 10
 		else:
 			player_world_x = WORLD_WIDTH - player_width
 	elif player_world_x < 0:
 		if current_biome_index > 0:
 			current_biome_index -= 1
-			generate_map()
+			load_current_biome_objects()
 			player_world_x = WORLD_WIDTH - player_width - 10
 		else:
 			player_world_x = 0
@@ -121,7 +130,7 @@ while True:
 
 	screen.fill(biomes[current_biome_index]["grass"])
 
-	for resource in resources_list:
+	for resource in active_resources:
 		resource.draw(screen, camera_x, camera_y)
 
 	player_screen_x = player_world_x - camera_x
