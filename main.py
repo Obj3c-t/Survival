@@ -5,6 +5,7 @@
 # in my hackatime, i originally had a platformer folder that i reused to make this
 # however i quickly ditched that platformer and it shows as a different project even though i started coding this and renamed it later
 
+# GAME CONFIG & BASIC SETTINGS
 import pygame, sys, random
 
 pygame.init()
@@ -26,6 +27,15 @@ pygame.display.set_caption("2D SURVIVAL - PHASE 1")
 
 clock = pygame.time.Clock()
 
+# BIOMES
+biomes = [
+	{"name": "Forest", "grass": (101, 146, 90)},
+	{"name": "Desert", "grass": (225, 191, 117)}
+]
+current_biome_index = 0
+world_blueprints = {}
+active_resources = []
+# GAME OBJECTS &  MAIN CLASSES
 class Resource:
 	def __init__(self, world_x, world_y, resource_type):
 		super(Resource, self).__init__()
@@ -45,26 +55,16 @@ class Resource:
 			draw_rect = pygame.Rect(screen_x, screen_y, TILE_SIZE, TILE_SIZE)
 			pygame.draw.rect(surface, self.color, draw_rect)
 
-biomes = [
-	{"name": "Forest", "grass": (101, 146, 90)},
-	{"name": "Desert", "grass": (225, 191, 117)}
-]
-current_biome_index = 0
-
-
-# player_rect = pygame.Rect(400, 300, 32, 32)
-# player_speed = 4
+# PLAYER INIT
 player_width = 24 * TILE_SCALE
 player_height = 24 * TILE_SCALE
 player_world_x = WORLD_WIDTH // 2
 player_world_y = WORLD_HEIGHT // 2
 player_speed = 3 * TILE_SCALE
 
-world_blueprints = {}
-active_resources = []
 
-# resources_list = []
-# GRID_SIZE = 32
+
+# WORLD GEN ENGINES
 
 def generate_all_biomes_at_start():
 	world_blueprints.clear()
@@ -86,17 +86,20 @@ def load_current_biome_objects():
 	blueprint_list = world_blueprints[current_biome_index]
 	for data in blueprint_list:
 		active_resources.append(Resource(data["x"], data["y"], data["type"]))
-
+# core world setup
 generate_all_biomes_at_start()
 load_current_biome_objects()
 
+# MAIN ENGINE LOOP
 while True:
+	# EVENT PROCESSING
 	for event in pygame.event.get():
 		if event.type == pygame.QUIT:
 			pygame.quit()
 			sys.exit()
-
+	# INPUT
 	keys = pygame.key.get_pressed()
+	# X AXIS MOVEMENT AND COLLISION
 	dx = 0
 	if keys[pygame.K_LEFT] or keys[pygame.K_a]:
 		dx -= player_speed
@@ -111,7 +114,7 @@ while True:
 				player_world_x = resource.rect.left - player_width
 			if dx < 0:
 				player_world_x = resource.rect.right
-
+	# Y AXIS MOVEMENT AND COLLISION
 	dy = 0	
 	if keys[pygame.K_UP] or keys[pygame.K_w]:
 		dy -= player_speed
@@ -125,10 +128,10 @@ while True:
 				player_world_y = resource.rect.top - player_height
 			if dy < 0:
 				player_world_y = resource.rect.bottom
-	# if player_world_x < 0: player_world_x = 0
+	# Y AXIS WORLD BOUNDARIES
 	if player_world_y < 0: player_world_y = 0
 	if player_world_y > WORLD_HEIGHT - player_height: player_world_y = WORLD_HEIGHT - player_height
-
+	# X AXIS BIOME TRANSITIONS
 	if player_world_x > WORLD_WIDTH - player_width:
 		if current_biome_index +1 < len(biomes):
 			current_biome_index += 1
@@ -143,7 +146,7 @@ while True:
 			player_world_x = WORLD_WIDTH - player_width - 10
 		else:
 			player_world_x = 0
-
+	# CAMERA OFFSET CALCULATIONS
 	camera_x = player_world_x - (SCREEN_WIDTH // 2) + (player_width // 2)
 	camera_y = player_world_y - (SCREEN_HEIGHT // 2) + (player_height // 2)
 
@@ -152,7 +155,7 @@ while True:
 	if camera_x > WORLD_WIDTH - SCREEN_WIDTH: camera_x = WORLD_WIDTH - SCREEN_WIDTH
 	if camera_y > WORLD_HEIGHT - SCREEN_HEIGHT: camera_y = WORLD_HEIGHT - SCREEN_HEIGHT
 
-
+	# RENDER GRAPHICS
 	screen.fill(biomes[current_biome_index]["grass"])
 
 	for resource in active_resources:
