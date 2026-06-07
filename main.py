@@ -67,7 +67,7 @@ player_world_x = WORLD_WIDTH // 2
 player_world_y = WORLD_HEIGHT // 2
 player_speed = 3 * TILE_SCALE
 
-
+harvest_range = TILE_SIZE * 2.5
 
 # WORLD GEN ENGINES
 
@@ -94,6 +94,17 @@ def load_current_biome_objects():
 # core world setup
 generate_all_biomes_at_start()
 load_current_biome_objects()
+
+ui_font = pygame.font.SysFont("SF Pro Rounded", 16, bold=True)
+
+def draw_graphical_inventory(surface):
+	bar_width = 240
+	bar_height = 70
+	bar_x = (SCREEN_WIDTH // 2) - (bar_width // 2)
+	bar_y - SCREEN_HEIGHT - bar_height - 20
+
+	hud_panel = pygame.Surface((bar_width, bar_height), pygame.SRCALPHA)
+	hud_panel.fill((40,40,40, 200))
 
 # MAIN ENGINE LOOP
 while True:
