@@ -1,3 +1,8 @@
+# Note for Stardance Reviewers:
+# I am using Gemini to help me understand and to learn to make different processes
+#such as the complex math for scrolling camera or the inventory
+# All main logic and design are done by me
+
 import pygame, sys, random
 
 pygame.init()
@@ -90,16 +95,27 @@ while True:
 			sys.exit()
 
 	keys = pygame.key.get_pressed()
-
+	dx = 0
 	if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-		player_world_x -= player_speed
+		dx -= player_speed
 	if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-		player_world_x += player_speed
+		dx += player_speed
+
+	player_world_x += dx
+	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+	for resource in active_resources:
+		if player_rect.colliderect(resource.rect):
+			if dx > 0:
+				player_world_x = resource.rect.left - player_width
+			if dx < 0:
+				player_world_x = resource.rect.right
+
+	dy = 0	
 	if keys[pygame.K_UP] or keys[pygame.K_w]:
-		player_world_y -= player_speed
+		dy -= player_speed
 	if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-		player_world_y += player_speed
-	
+		dy += player_speed
+	player_world_y += dy
 	# if player_world_x < 0: player_world_x = 0
 	if player_world_y < 0: player_world_y = 0
 	if player_world_y > WORLD_HEIGHT - player_height: player_world_y = WORLD_HEIGHT - player_height
