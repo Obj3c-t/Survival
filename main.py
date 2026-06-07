@@ -41,7 +41,7 @@ for y in range(0, SCREEN_HEIGHT, GRID_SIZE):
 
 		if spawn_chance <= 5: # 5% chance to spawn
 			resources_list.append(Resource(x, y, "tree"))
-		elif spawn_chance <=8: # 3% chance to spwn
+		elif spawn_chance <=8: # 3% chance to spawn
 			resources_list.append(Resource(x, y, "rock"))
 
 while True:
