@@ -10,8 +10,8 @@ import pygame, sys, random, math
 
 pygame.init()
 
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1400
+SCREEN_HEIGHT = 1000
 
 TILE_SCALE = 2
 BASE_TILE_SIZE = 32
@@ -127,6 +127,14 @@ def draw_graphical_inventory(surface):
 		# render mini colored icon
 		pygame.draw.rect(surface, slot["color"], (current_x + 8, slot_y + 8, slot_size - 16, slot_size - 16))
 
+		# render stack text counters
+		count_val = player_inventory[slot["type"]]
+		text_surface = ui_font.render(str(count_val), True, (255,255,255))
+		surface.blit(text_surface, (current_x + slot_size - text_surface.get_width() - 4, slot_y + slot_size - text_surface.get_height() - 2))
+
+		#render title labels
+		label_surface = ui_font.render(slot["label"], True, (230,230,230))
+		surface.blit(label_surface, (current_x + (slot_size//2) - (label_surface.get_width() // 2), slot_y - 18))
 
 
 # MAIN ENGINE LOOP
@@ -136,6 +144,34 @@ while True:
 		if event.type == pygame.QUIT:
 			pygame.quit()
 			sys.exit()
+		elif event.type == pygame.MOUSEBUTTONDOWN:
+			if event.button == 1:
+				mouse_x, mouse_y = pygame.mouse.get_pos()
+
+				click_world_x = mouse_x + camera_x
+				click_world_y = mouse_y + camera_y
+
+				player_center_x = player_world_x + (player_width // 2)
+				player_center_y = player_world_y + (player_height // 2)
+
+				for i in range(len(active_resources) -1, -1, -1):
+					res= active_resources[i]
+
+					if res.rect.collidepoint(click_world_x, click_world_y):
+						dist = math.hypot(player_center_x - res.rect.centerx, player_center_y - res.rect.centery)
+
+						if dist <= harvest_range:
+							res.health -= 25
+							if res.health <= 0:
+								player_inventory[res.type] += 1
+
+								blueprint_list = world_blueprints[current_biome_index]
+								for bp in blueprint_list:
+									if bp["x"] == res.rect.x and bp["y"] == res.rect.y:
+										blueprint_list.remove(bp)
+							break
+
+
 	# INPUT
 	keys = pygame.key.get_pressed()
 	# X AXIS MOVEMENT AND COLLISION
