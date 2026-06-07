@@ -6,7 +6,7 @@
 # however i quickly ditched that platformer and it shows as a different project even though i started coding this and renamed it later
 
 # GAME CONFIG & BASIC SETTINGS
-import pygame, sys, random
+import pygame, sys, random, math
 
 pygame.init()
 
@@ -35,6 +35,11 @@ biomes = [
 current_biome_index = 0
 world_blueprints = {}
 active_resources = []
+
+player_inventory = {
+	"tree": 0,
+	"rock": 0
+}
 # GAME OBJECTS &  MAIN CLASSES
 class Resource:
 	def __init__(self, world_x, world_y, resource_type):
