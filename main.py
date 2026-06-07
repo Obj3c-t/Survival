@@ -2,6 +2,8 @@
 # I am using Gemini to help me understand and to learn to make different processes
 #such as the complex math for scrolling camera or the inventory
 # All main logic and design are done by me
+# in my hackatime, i originally had a platformer folder that i reused to make this
+# however i quickly ditched that platformer and it shows as a different project even though i started coding this and renamed it later
 
 import pygame, sys, random
 
@@ -116,6 +118,13 @@ while True:
 	if keys[pygame.K_DOWN] or keys[pygame.K_s]:
 		dy += player_speed
 	player_world_y += dy
+	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+	for resource in active_resources:
+		if player_rect.colliderect(resource.rect):
+			if dy > 0:
+				player_world_y = resource.rect.top - player_height
+			if dy < 0:
+				player_world_y = resource.rect.bottom
 	# if player_world_x < 0: player_world_x = 0
 	if player_world_y < 0: player_world_y = 0
 	if player_world_y > WORLD_HEIGHT - player_height: player_world_y = WORLD_HEIGHT - player_height
