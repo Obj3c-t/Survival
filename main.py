@@ -95,16 +95,39 @@ def load_current_biome_objects():
 generate_all_biomes_at_start()
 load_current_biome_objects()
 
-ui_font = pygame.font.SysFont("SF Pro Rounded", 16, bold=True)
+ui_font = pygame.font.SysFont("SFProRoundedRegular", 16, bold=True)
 
 def draw_graphical_inventory(surface):
 	bar_width = 240
 	bar_height = 70
 	bar_x = (SCREEN_WIDTH // 2) - (bar_width // 2)
-	bar_y - SCREEN_HEIGHT - bar_height - 20
+	bar_y = SCREEN_HEIGHT - bar_height - 20
 
 	hud_panel = pygame.Surface((bar_width, bar_height), pygame.SRCALPHA)
 	hud_panel.fill((40,40,40, 200))
+	pygame.draw.rect(hud_panel, (200,200,200), (0,0,bar_width, bar_height), 2, border_radius = 8)
+	surface.blit(hud_panel, (bar_x, bar_y))
+
+	slots = [
+		{"type": "tree", "color": (34, 139, 34), "label": "Wood"},
+		{"type": "tree", "color": (128, 128, 128), "label": "Stone"}
+	]
+
+	slot_size = 46
+	start_offset_x = bar_x + 20
+	slot_y = bar_y + 12
+
+	for i, slot in enumerate(slots):
+		current_x = start_offset_x + (i * (slot_size + 30))
+
+		# draw item container frame
+		pygame.draw.rect(surface, (20,20,20), (current_x, slot_y, slot_size, slot_size), border_radius=4)
+		pygame.draw.rect(surface, (100,100,100), (current_x, slot_y, slot_size, slot_size), border_radius=4)
+
+		# render mini colored icon
+		pygame.draw.rect(surface, slot["color"], (current_x + 8, slot_y + 8, slot_size - 16, slot_size - 16))
+
+
 
 # MAIN ENGINE LOOP
 while True:
@@ -182,6 +205,6 @@ while True:
 
 	player_draw_rect = pygame.Rect(player_screen_x, player_screen_y, player_width, player_height)
 	pygame.draw.rect(screen, (240,240,240), player_draw_rect)
-
+	draw_graphical_inventory(screen)
 	pygame.display.flip()
 	clock.tick(60)
