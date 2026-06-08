@@ -1,6 +1,6 @@
 # Note for Stardance Reviewers:
 # I am using Gemini to help me understand and to learn to make different processes
-#such as the complex math for scrolling camera or the inventory
+# such as the complex math parts for scrolling camera or the inventory and is all documented in the commits
 # All main logic and design are done by me
 # in my hackatime, i originally had a platformer folder that i reused to make this
 # however i quickly ditched that platformer and it shows as a different project even though i started coding this and renamed it later
@@ -36,22 +36,46 @@ current_biome_index = 0
 world_blueprints = {}
 active_resources = []
 
-player_inventory = {
-	"tree": 0,
-	"rock": 0
+# player_inventory = {
+	# "tree": 0,
+	# "rock": 0
+# }
+inventory_slots = {
+	0: {"item": "Wood", "count": 5, "color": (34, 139, 34)},
+	1: {"item": "Stone", "count": 2, "color": (128,128,128)},
+	2: {"item": None, "count": 0, "color": None},
+	3: {"item": None, "count": 0, "color": None},
+	4: {"item": None, "count": 0, "color": None},
+	5: {"item": None, "count": 0, "color": None},
+	6: {"item": None, "count": 0, "color": None},
+	7: {"item": None, "count": 0, "color": None},
+	8: {"item": None, "count": 0, "color": None},
+	9: {"item": None, "count": 0, "color": None},
+	10: {"item": None, "count": 0, "color": None},
+	11: {"item": None, "count": 0, "color": None},
 }
+is_inventory_open = False
+selected_hotbar_slot = 0
+
+dragged_item = None
+drag_source_slot = None
+
 # GAME OBJECTS &  MAIN CLASSES
 class Resource:
 	def __init__(self, world_x, world_y, resource_type):
 		super(Resource, self).__init__()
 		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
 		self.type = resource_type
-		self.health = 100
+		self.max_health = 300
+		self.health = self.max_health
 
 		if self.type == "tree":
 			self.color = (34, 139, 34)
+			self.item_yield = "Wood"
 		elif self.type == "rock":
 			self.color = (128, 128, 128)
+			self.item_yield = "Stone"
+
 
 	def draw(self, surface, camera_x, camera_y):
 		screen_x = self.rect.x - camera_x
@@ -66,9 +90,9 @@ player_height = 24 * TILE_SCALE
 player_world_x = WORLD_WIDTH // 2
 player_world_y = WORLD_HEIGHT // 2
 player_speed = 3 * TILE_SCALE
-
-harvest_range = TILE_SIZE * 2.5
-
+harvest_range = TILE_SIZE * 2
+active_harvest_target = None
+harvest_progress = 1
 # WORLD GEN ENGINES
 
 def generate_all_biomes_at_start():
@@ -95,81 +119,256 @@ def load_current_biome_objects():
 generate_all_biomes_at_start()
 load_current_biome_objects()
 
-ui_font = pygame.font.SysFont("SFProRoundedRegular", 16, bold=True)
+ui_font = pygame.font.SysFont("SFProRoundedRegular", 14, bold=True)
+hud_font = pygame.font.SysFont("SFProRoundedRegular", 18, bold=True)
+def add_item_to_inventory(item_name, item_color):
+	for slot_idx in range(12):
+		if inventory_slots[slot_idx]["item"] == item_name:
+			inventory_slots[slot_idx]["count"] += 1
+			return
+	for slot_idx in range(12):
+		if inventory_slots[slot_idx]["item"] is None:
+			inventory_slots[slot_idx]["item"] = item_name
+			inventory_slots[slot_idx]["count"] = 1
+			inventory_slots[slot_idx]["color"] = item_color
+			return
+def draw_hud_and_inventories(surface):
+	mouse_pos = pygame.mouse.get_pos()
+	slot_size = 50
+	padding = 10
 
-def draw_graphical_inventory(surface):
-	bar_width = 240
-	bar_height = 70
-	bar_x = (SCREEN_WIDTH // 2) - (bar_width // 2)
-	bar_y = SCREEN_HEIGHT - bar_height - 20
+	if active_harvest_target is not None and pygame.mouse.get_pressed()[0]:
+		bar_w, bar_h = 200, 20
+		bar_x = (SCREEN_WIDTH // 2) - (bar_w // 2)
+		bar_y = SCREEN_HEIGHT - 130
 
-	hud_panel = pygame.Surface((bar_width, bar_height), pygame.SRCALPHA)
-	hud_panel.fill((40,40,40, 200))
-	pygame.draw.rect(hud_panel, (200,200,200), (0,0,bar_width, bar_height), 2, border_radius = 8)
-	surface.blit(hud_panel, (bar_x, bar_y))
+		pygame.draw.rect(surface, (30,30,30), (bar_x, bar_y, bar_w, bar_h), border_radius = 4)
 
-	slots = [
-		{"type": "tree", "color": (34, 139, 34), "label": "Wood"},
-		{"type": "tree", "color": (128, 128, 128), "label": "Stone"}
-	]
+		pct = harvest_progress / active_harvest_target.max_health
+		pygame.draw.rect(surface, (0,220,100), (bar_x + 2, bar_y + 2, int((bar_w - 4) * pct), bar_h - 4), border_radius=2)
 
-	slot_size = 46
-	start_offset_x = bar_x + 20
-	slot_y = bar_y + 12
+		txt = hud_font.render("Harvesting...", True, (255,255,255))
+		surface.blit(txt, (SCREEN_WIDTH //2 - txt.get_width() // 2, bar_y - 25))
+	hotbar_w = (slot_size * 4) + (padding * 5)
+	hotbar_h = slot_size + (padding * 2)
+	hotbar_x = (SCREEN_WIDTH // 2) - (hotbar_w // 2)
+	hotbar_y = SCREEN_HEIGHT - hotbar_h - 15
 
-	for i, slot in enumerate(slots):
-		current_x = start_offset_x + (i * (slot_size + 30))
+	pygame.draw.rect(surface, (45, 45, 45, 220), (hotbar_x, hotbar_y, hotbar_w, hotbar_h), border_radius=8)
+	pygame.draw.rect(surface, (120, 120, 120), (hotbar_x, hotbar_y, hotbar_w, hotbar_h), 2, border_radius=8)
+	hotbar_rects = {}
+	for idx in range(4):
+		sx = hotbar_x + padding + (idx * (slot_size + padding))
+		sy = hotbar_y + padding
+		slot_rect = pygame.Rect(sx,sy,slot_size,slot_size)
+		hotbar_rects[idx] = slot_rect
 
-		# draw item container frame
-		pygame.draw.rect(surface, (20,20,20), (current_x, slot_y, slot_size, slot_size), border_radius=4)
-		pygame.draw.rect(surface, (100,100,100), (current_x, slot_y, slot_size, slot_size), border_radius=4)
+		pygame.draw.rect(surface, (25,25,25), slot_rect, border_radius=5)
+		pygame.draw.rect(surface, (80,80,80), slot_rect,1, border_radius=5)
 
-		# render mini colored icon
-		pygame.draw.rect(surface, slot["color"], (current_x + 8, slot_y + 8, slot_size - 16, slot_size - 16))
+		slot_data = inventory_slots[idx]
+		if slot_data["item"] is not None and drag_source_slot != idx:
+			pygame.draw.rect(surface, slot_data["color"], (sx + 8, sy + 8, slot_size - 16, slot_size - 16), border_radius=3)
+			cnt_txt = ui_font.render(str(slot_data["count"]), True, (255,255,255))
+			surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
 
-		# render stack text counters
-		count_val = player_inventory[slot["type"]]
-		text_surface = ui_font.render(str(count_val), True, (255,255,255))
-		surface.blit(text_surface, (current_x + slot_size - text_surface.get_width() - 4, slot_y + slot_size - text_surface.get_height() - 2))
+	inv_grid_rects = {}
+	if is_inventory_open:
+		inv_w = (slot_size * 4) + (padding * 5)
+		inv_h = (slot_size * 2) + (padding * 3) + 40
+		inv_x = (SCREEN_WIDTH // 2) - (inv_w // 2)
+		inv_y = (SCREEN_HEIGHT // 2) - (inv_h // 2) - 30
 
-		#render title labels
-		label_surface = ui_font.render(slot["label"], True, (230,230,230))
-		surface.blit(label_surface, (current_x + (slot_size//2) - (label_surface.get_width() // 2), slot_y - 18))
+		pygame.draw.rect(surface, (35, 35, 35), (inv_x, inv_y, inv_w, inv_h), border_radius=10)
+		pygame.draw.rect(surface, (150, 150, 150), (inv_x, inv_y, inv_w, inv_h), 2, border_radius=10)
+
+		title = hud_font.render("Inventory (E to Close)", True, (240,240,240))
+		surface.blit(title, (inv_x + padding + 5, inv_y + 12))
+
+		slot_start_idx = 4
+		for row in range(2):
+			for col in range(4):
+				idx - slot_start_idx + (row * 4) + col
+				sx = inv_x + padding + (col * (slot_size + padding))
+				sy = inv_y + 40 + padding + (row * (slot_size + padding))
+				slot_rect = pygame.Rect(sx, sy, slot_size, slot_size)
+				inv_grid_rects[idx] = slot_rect
+
+				pygame.draw.rect(surface, (20, 20, 20), slot_rect, border_radius=5)
+				pygame.draw.rect(surface, (70, 70, 70), slot_rect, 1, border_radius=5)
+
+				slot_data = inventory_slots[idx]
+				if slot_data["item"] is not None and drag_source_slot != idx:
+					pygame.draw.rect(surface, slot_data["color"], (sx + 8, sy + 8, slot_size - 16, slot_size - 16), border_radius=3)
+					cnt_txt = ui_font.render(str(slot_data["count"]), True, (255,255,255))
+					surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
+	if dragged_item is not None:
+		ds = 36
+		mx, my = mouse_pos
+		pygame.draw.rect(surface, dragged_item["color"], (mx - ds//2, my - ds//2, ds, ds), border_radius=3)
+		c_txt = ui_font.render(str(dragged_item["count"]), True, (255,255,255))
+		surface.blit(c_txt, (mx + ds//2 - c_txt.get_width(), my + ds//2 - c_txt.get_height()))
+	return hotbar_rects, inv_grid_rects
+
+
+
+
+
+# def draw_graphical_inventory(surface):
+# 	bar_width = 240
+# 	bar_height = 70
+# 	bar_x = (SCREEN_WIDTH // 2) - (bar_width // 2)
+# 	bar_y = SCREEN_HEIGHT - bar_height - 20
+
+# 	hud_panel = pygame.Surface((bar_width, bar_height), pygame.SRCALPHA)
+# 	hud_panel.fill((40,40,40, 200))
+# 	pygame.draw.rect(hud_panel, (200,200,200), (0,0,bar_width, bar_height), 2, border_radius = 8)
+# 	surface.blit(hud_panel, (bar_x, bar_y))
+
+# 	slots = [
+# 		{"type": "tree", "color": (34, 139, 34), "label": "Wood"},
+# 		{"type": "tree", "color": (128, 128, 128), "label": "Stone"}
+# 	]
+
+# 	slot_size = 46
+# 	start_offset_x = bar_x + 20
+# 	slot_y = bar_y + 12
+
+# 	for i, slot in enumerate(slots):
+# 		current_x = start_offset_x + (i * (slot_size + 30))
+
+# 		# draw item container frame
+# 		pygame.draw.rect(surface, (20,20,20), (current_x, slot_y, slot_size, slot_size), border_radius=4)
+# 		pygame.draw.rect(surface, (100,100,100), (current_x, slot_y, slot_size, slot_size), border_radius=4)
+
+# 		# render mini colored icon
+# 		pygame.draw.rect(surface, slot["color"], (current_x + 8, slot_y + 8, slot_size - 16, slot_size - 16))
+
+# 		# render stack text counters
+# 		count_val = player_inventory[slot["type"]]
+# 		text_surface = ui_font.render(str(count_val), True, (255,255,255))
+# 		surface.blit(text_surface, (current_x + slot_size - text_surface.get_width() - 4, slot_y + slot_size - text_surface.get_height() - 2))
+
+# 		#render title labels
+# 		label_surface = ui_font.render(slot["label"], True, (230,230,230))
+# 		surface.blit(label_surface, (current_x + (slot_size//2) - (label_surface.get_width() // 2), slot_y - 18))
 
 
 # MAIN ENGINE LOOP
 while True:
+	mouse_x, mouse_y = pygame.mouse.get_pos()
+
+	hotbar_rects, inv_grid_rects = draw_hud_and_inventories(pygame.Surface((1,1)))
+
 	# EVENT PROCESSING
 	for event in pygame.event.get():
 		if event.type == pygame.QUIT:
 			pygame.quit()
 			sys.exit()
+		elif event.type == pygame.KEYDOWN:
+			if event.key == pygame.K_e:
+				is_inventory_open = not is_inventory_open
+				if not is_inventory_open and dragged_item is not None:
+					inventory_slots[drag_source_slot] = dragged_item
+					dragged_item = None
+					drag_source_slot = None
 		elif event.type == pygame.MOUSEBUTTONDOWN:
 			if event.button == 1:
-				mouse_x, mouse_y = pygame.mouse.get_pos()
+				clicked_slot = None
 
-				click_world_x = mouse_x + camera_x
-				click_world_y = mouse_y + camera_y
+				for idx, r in hotbar_rects.items():
+					if r.collidepoint(mouse_x, mouse_y):
+						clicked_slot = idx
+						break
 
-				player_center_x = player_world_x + (player_width // 2)
-				player_center_y = player_world_y + (player_height // 2)
-
-				for i in range(len(active_resources) -1, -1, -1):
-					res= active_resources[i]
-
-					if res.rect.collidepoint(click_world_x, click_world_y):
-						dist = math.hypot(player_center_x - res.rect.centerx, player_center_y - res.rect.centery)
-
-						if dist <= harvest_range:
-							res.health -= 25
-							if res.health <= 0:
-								player_inventory[res.type] += 1
-
-								blueprint_list = world_blueprints[current_biome_index]
-								for bp in blueprint_list:
-									if bp["x"] == res.rect.x and bp["y"] == res.rect.y:
-										blueprint_list.remove(bp)
+				if is_inventory_open:
+					for idx, r in inv_grid_rects.items():
+						if r.collidepoint(mouse_x, mouse_y):
+							clicked_slot = idx
 							break
+				if clicked_slot is not None:
+					if dragged_item is None:
+						if inventory_slots[clicked_slot]["item"] is not None:
+							dragged_item = inventory_slots[clicked_slot].copy()
+							drag_source_slot = clicked_slot
+							inventory_slots[clicked_slot] = {"item": None, "count": 0, "color": None}
+					else:
+						target_slot_data = inventory_slots[clicked_slot].copy()
+						inventory_slots[clicked_slot] = dragged_item
+
+						if target_slot_data["item"] is not None:
+							dragged_item = target_slot_data
+							drag_source_slot = clicked_slot
+						else:
+							dragged_item = None
+							drag_source_slot = None
+	mouse_pressed = pygame.mouse.get_pressed()
+	if mouse_pressed[0] and not is_inventory_open and dragged_item is None:
+		click_world_x = mouse_x + camera_x
+		click_world_y = mouse_y + camera_y
+
+		player_center_x = player_world_x + (player_width // 2)
+		player_center_y = player_world_y + (player_height //2)
+
+		hovered_res = None
+		for res in active_resources:
+			if res.rect.collidepoint(click_world_x, click_world_y):
+				dist = math.hypot(player_center_x - res.rect.centerx, player_center_y - res.rect.centery)
+				if dist <= harvest_range:
+					hovered_res = res
+					break
+		if hovered_res is not None:
+			if active_harvest_target != hovered_res:
+				active_harvest_target = hovered_res
+				harvest_progress = 0
+
+			harvest_progress +=1
+
+			if harvest_progress >= active_harvest_target.max_health:
+				add_item_to_inventory(active_harvest_target.item_yield, active_harvest_target.color)
+
+				blueprint_list = world_blueprints[current_biome_index]
+				for bp in blueprint_list:
+					if bp["x"] == active_harvest_target.rect.x and bp["y"] == active_harvest_target.rect.y:
+						blueprint_list.remove(bp)
+						break
+
+				active_resources.remove(active_harvest_target)
+				active_harvest_target = None
+				harvest_progress = 0
+		else:
+			active_harvest_target = None
+			harvest_progress = 0
+
+	else:
+		if not mouse_pressed[0]:
+			active_harvest_target = None
+			harvest_progress = 0
+
+				# mouse_x, mouse_y = pygame.mouse.get_pos()
+
+				# click_world_x = mouse_x + camera_x
+				# click_world_y = mouse_y + camera_y
+
+				# player_center_x = player_world_x + (player_width // 2)
+				# player_center_y = player_world_y + (player_height // 2)
+
+				# for i in range(len(active_resources) -1, -1, -1):
+				# 	res= active_resources[i]
+
+				# 	if res.rect.collidepoint(click_world_x, click_world_y):
+				# 		dist = math.hypot(player_center_x - res.rect.centerx, player_center_y - res.rect.centery)
+
+				# 		if dist <= harvest_range:
+				# 			res.health -= 25
+				# 			if res.health <= 0:
+				# 				player_inventory[res.type] += 1
+
+				# 				blueprint_list = world_blueprints[current_biome_index]
+				# 				for bp in blueprint_list:
+				# 					if bp["x"] == res.rect.x and bp["y"] == res.rect.y:
+				# 						blueprint_list.remove(bp)
+				# 			break
 
 
 	# INPUT
@@ -241,6 +440,6 @@ while True:
 
 	player_draw_rect = pygame.Rect(player_screen_x, player_screen_y, player_width, player_height)
 	pygame.draw.rect(screen, (240,240,240), player_draw_rect)
-	draw_graphical_inventory(screen)
+	draw_hud_and_inventories(screen)
 	pygame.display.flip()
 	clock.tick(60)
