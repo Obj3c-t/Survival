@@ -41,8 +41,8 @@ active_resources = []
 	# "rock": 0
 # }
 inventory_slots = {
-	0: {"item": "Wood", "count": 5, "color": (34, 139, 34)},
-	1: {"item": "Stone", "count": 2, "color": (128,128,128)},
+	0: {"item": None, "count": 0, "color": None},
+	1: {"item": None, "count": 0, "color": None},
 	2: {"item": None, "count": 0, "color": None},
 	3: {"item": None, "count": 0, "color": None},
 	4: {"item": None, "count": 0, "color": None},
@@ -188,7 +188,7 @@ def draw_hud_and_inventories(surface):
 		slot_start_idx = 4
 		for row in range(2):
 			for col in range(4):
-				idx - slot_start_idx + (row * 4) + col
+				idx = slot_start_idx + (row * 4) + col
 				sx = inv_x + padding + (col * (slot_size + padding))
 				sy = inv_y + 40 + padding + (row * (slot_size + padding))
 				slot_rect = pygame.Rect(sx, sy, slot_size, slot_size)
