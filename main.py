@@ -36,6 +36,33 @@ current_biome_index = 0
 world_blueprints = {}
 active_resources = []
 
+active_structures = []
+player_level = 1
+player_xp = 0
+player_xp_needed = 100
+
+XP_REWARDS = {
+	"tree": 20,
+	"rock": 35,
+	"enemy": 60
+}
+
+ITEM_REGISTRY = {
+	"Wood": {"color": (139, 69, 19), "is_structure": }
+	"Stone": {"color": (128, 128, 128), "is_structure": False, "structure_type": None},
+	"Workbench": {"color": (160, 110, 60), "is_structure": True, "structure_type": "workbench"},
+	"Furnace": {"color": (80, 80, 80), "is_structure": True, "structure_type": "furnace"},
+	"Anvil": {"color": (50, 50, 55), "is_structure": True, "structure_type": "anvil"},
+	"Stone Pickaxe": {"color": (190, 190, 190), "is_structure": False, "structure_type": None}
+}
+
+RECIPES = [
+	{"result": "Workbench", "ingredients": {"Wood": 10}, "station": None},
+	{"result": "Furnace", "ingredients": {"Stone": 20, "Wood": 5}, "station": "workbench"},
+	{"result": "Anvil", "ingredients": {"Stone": 30}, "station": "workbench"},
+	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"}
+]
+
 # player_inventory = {
 	# "tree": 0,
 	# "rock": 0
@@ -61,6 +88,18 @@ dragged_item = None
 drag_source_slot = None
 
 # GAME OBJECTS &  MAIN CLASSES
+class PlacedStructure:
+	def __init__(self, world_x, world_y, struct_type, color):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.type = struct_type
+		self.color = color
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			pygame.draw.rect(surface, self.color,(screen_x,screen_y,TILE_SIZE, TILE_SIZE), border_radius=4)
+			pygame.draw.rect(surface, (255,255,255), (screen_x,screen_y,TILE_SIZE,TILE_SIZE), 2, border_radius=4)
+
 class Resource:
 	def __init__(self, world_x, world_y, resource_type):
 		super(Resource, self).__init__()
@@ -95,7 +134,7 @@ active_harvest_target = None
 harvest_progress = 1
 # WORLD GEN ENGINES
 
-def generate_all_biomes_at_start():
+def generate_all_biomes_at_start(): 
 	world_blueprints.clear()
 	for biome_idx in range(len(biomes)):
 		world_blueprints[biome_idx] = []
@@ -112,6 +151,7 @@ def generate_all_biomes_at_start():
 					world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
 def load_current_biome_objects():
 	active_resources.clear()
+	active_structures.clear()
 	blueprint_list = world_blueprints[current_biome_index]
 	for data in blueprint_list:
 		active_resources.append(Resource(data["x"], data["y"], data["type"]))
@@ -132,6 +172,29 @@ def add_item_to_inventory(item_name, item_color):
 			inventory_slots[slot_idx]["count"] = 1
 			inventory_slots[slot_idx]["color"] = item_color
 			return
+
+def get_total_inventory_counts():
+	counts = {}
+	for data in inventory_slots.values():
+		if data["ïtem"] is not None:
+			counts[data["item"]] = counts.get(data["item"]) 
+	return counts
+
+def deduct_crafting_resources(ingredients):
+	for item, req_amt in ingredients.items():
+		rem = req_amt
+		for idx in range(12):
+			if inventory_slots[idx]["item"] == item:
+				if inventory_slots[idx]["count"] >= rem:
+					inventory_slots[idx]["count"] -= rem
+					rem = 0
+				else:
+					rem -= inventory_slots[idx]["count"]
+					inventory_slots[idx]["count"] = 0
+				if inventory_slots[idx]["count"] == 0:
+					inventory_slots[idx] = {"item": None, "count": 0, "color": None}
+
+
 def draw_hud_and_inventories(surface):
 	mouse_pos = pygame.mouse.get_pos()
 	slot_size = 50
