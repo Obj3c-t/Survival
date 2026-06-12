@@ -44,6 +44,8 @@ player_xp_needed = 100
 XP_REWARDS = {
 	"tree": 20,
 	"rock": 35,
+	"copper_ore": 50,
+	"iron_ore": 75,
 	"enemy": 60
 }
 
@@ -106,14 +108,25 @@ class Resource:
 		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
 		self.type = resource_type
 		self.max_health = 300
-		self.health = self.max_health
+		
 
 		if self.type == "tree":
 			self.color = (34, 139, 34)
 			self.item_yield = "Wood"
+			self.max_health = 200
 		elif self.type == "rock":
 			self.color = (128, 128, 128)
 			self.item_yield = "Stone"
+			self.max_health = 300
+		elif self.type == "copper_ore":
+			self.color = (184, 115, 51)
+			self.item_yield = "Copper Ore"
+			self.max_health = 500
+		elif self.type == "iron_ore":
+			self.color = (165, 42, 42)
+			self.item_yield = "Iron Ore"
+			self.max_health = 900
+		self.health = self.max_health
 
 
 	def draw(self, surface, camera_x, camera_y):
@@ -131,8 +144,11 @@ player_world_y = WORLD_HEIGHT // 2
 player_speed = 3 * TILE_SCALE
 harvest_range = TILE_SIZE * 2
 active_harvest_target = None
-harvest_progress = 1
+harvest_progress = 0
 # WORLD GEN ENGINES
+player_max_health = 100
+player_current_health = 100
+desert_damage_timer = 0
 
 def generate_all_biomes_at_start(): 
 	world_blueprints.clear()
@@ -144,11 +160,19 @@ def generate_all_biomes_at_start():
 					continue
 
 				spawn_roll = random.randint(1, 100)
+				if biome_idx == 0:
+					if spawn_roll <= 4: # 4% chance to spawn
+						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
+					elif spawn_roll <=6: # 2% chance to spawn
+						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
 
-				if spawn_roll <= 4: # 4% chance to spawn
-					world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
-				elif spawn_roll <=6: # 2% chance to spawn
-					world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
+				elif biome_idx == 1:
+					if spawn_roll <= 1: # Trees are exceptionally rare
+						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
+					elif spawn_roll <= 4: # 3% Copper chance
+						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "copper_ore"})
+					elif spawn_roll <= 6: # 2% Iron chance
+						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "iron_ore"})
 def load_current_biome_objects():
 	active_resources.clear()
 	active_structures.clear()
@@ -227,6 +251,15 @@ def draw_hud_and_inventories(surface):
 	pygame.draw.rect(surface, (30,30,30), (xp_x, xp_y,xp_bar_w,xp_bar_h), border_radius=6)
 	xp_pct = min(1.0, player_xp / player_xp_needed)
 	pygame.draw.rect(surface, (0,180,255), (xp_x + 2, xp_y+2, int((xp_bar_w-4) * xp_pct), xp_bar_h-4), border_radius=4)
+
+	hp_bar_w, hp_bar_h = 200, 16
+	hp_x = 20
+	hp_y = 20
+	pygame.draw.rect(surface, (30,30,30), (hp_x, hp_y, hp_bar_w, hp_bar_h), border_radius=4)
+	hp_pct = max(0.0, min(1.0, player_current_health / player_max_health))
+	pygame.draw.rect(surface, (240, 50, 50), (hp_x + 2, hp_y + 2, int((hp_bar_w - 4) * hp_pct), hp_bar_h - 4), border_radius=2)
+	hp_txt = ui_font.render(f"HP: {player_current_health}/{player_max_health}", True, (255,255,255))
+	surface.blit(hp_txt, (hp_x + 5, hp_y + 1))
 
 	if active_harvest_target is not None and pygame.mouse.get_pressed()[0]:
 		bar_w, bar_h = 200, 20
@@ -495,6 +528,8 @@ while True:
 			if active_hand_item == "Stone Pickaxe":
 				if active_harvest_target.type == "rock":
 					harvest_speed = 5
+				elif active_harvest_target.type in ["copper_ore", "iron_ore"]:
+					harvest_speed = 3
 				elif active_harvest_target.type == "tree":
 					harvest_speed = 2
 
@@ -597,6 +632,25 @@ while True:
 			player_world_x = WORLD_WIDTH - player_width - 10
 		else:
 			player_world_x = 0
+
+	if current_biome_index == 1:
+		has_protection = False
+		if not has_protection:
+			desert_damage_timer += 1
+			if desert_damage_timer >= 60:
+				player_current_health -= 5
+				desert_damage_timer = 0
+				if player_current_health <= 0:
+					player_world_x = WORLD_WIDTH // 2
+					player_world_y = WORLD_HEIGHT // 2
+					current_biome_index = 0
+					load_current_biome_objects()
+					player_current_health = player_max_health
+	else:
+		desert_damage_timer = 0
+		if player_current_health < player_max_health:
+			player_current_health += 0.05
+
 	# CAMERA OFFSET CALCULATIONS
 	camera_x = player_world_x - (SCREEN_WIDTH // 2) + (player_width // 2)
 	camera_y = player_world_y - (SCREEN_HEIGHT // 2) + (player_height // 2)
