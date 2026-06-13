@@ -34,6 +34,7 @@ biomes = [
 ]
 current_biome_index = 0
 world_blueprints = {}
+structure_blueprints = {0: [], 1: []}
 active_resources = []
 
 active_structures = []
@@ -46,12 +47,19 @@ XP_REWARDS = {
 	"rock": 35,
 	"copper_ore": 50,
 	"iron_ore": 75,
+	"cow": 30,
 	"enemy": 60
 }
 
 ITEM_REGISTRY = {
 	"Wood": {"color": (139, 69, 19), "is_structure":False, "structure_type": None },
 	"Stone": {"color": (128, 128, 128), "is_structure": False, "structure_type": None},
+	"Copper Ore": {"color": (184, 115, 51), "is_structure": False, "structure_type": None},
+	"Iron Ore": {"color": (165, 42, 42), "is_structure": False, "structure_type": None},
+	"Leather": {"color": (150, 90, 50), "is_structure": False, "structure_type": None},
+	"Leather Armor": {"color": (100, 65, 35), "is_structure": False, "structure_type": None},
+	"Wooden Sword": {"color": (170, 110, 50), "is_structure": False, "structure_type": None},
+	"Stone Sword": {"color": (150, 150, 150), "is_structure": False, "structure_type": None},
 	"Workbench": {"color": (160, 110, 60), "is_structure": True, "structure_type": "workbench"},
 	"Furnace": {"color": (80, 80, 80), "is_structure": True, "structure_type": "furnace"},
 	"Anvil": {"color": (50, 50, 55), "is_structure": True, "structure_type": "anvil"},
@@ -62,7 +70,10 @@ RECIPES = [
 	{"result": "Workbench", "ingredients": {"Wood": 10}, "station": None},
 	{"result": "Furnace", "ingredients": {"Stone": 20, "Wood": 5}, "station": "workbench"},
 	{"result": "Anvil", "ingredients": {"Stone": 30}, "station": "workbench"},
-	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"}
+	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
+	{"result": "Leather Armor", "ingredients": {"Leather": 15}, "station": "workbench"},
+	{"result": "Wooden Sword", "ingredients": {"Wood": 6}, "station": None},
+	{"result": "Stone Sword", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"}
 ]
 
 # player_inventory = {
@@ -135,6 +146,46 @@ class Resource:
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
 			draw_rect = pygame.Rect(screen_x, screen_y, TILE_SIZE, TILE_SIZE)
 			pygame.draw.rect(surface, self.color, draw_rect)
+active_mobs = []
+class CowNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (139, 115, 85)
+		self.health = 100
+		self.max_health = 100
+		self.move_timer = 0
+		self.dx = 0
+		self.dy = 0
+		self.speed = 1 * TILE_SCALE
+
+	def update(self):
+		self.move_timer += 1
+		if self.move_timer >= 120:
+			self.move_timer = 0
+			if random.randint(1, 100) <= 60:
+				self.dx = random.choice([-self.speed, 0, self.speed])
+				self.dy = random.choice([-self.speed, 0, self.speed])
+			else:
+				self.dx, self.dy = 0,0
+		self.rect.x += self.dx
+		self.rect.y += self.dy
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			pygame.draw.rect(surface, self.color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE), border_radius = 6)
+			pygame.draw.rect(surface, (60,45,30), (screen_x + 8, screen_y + 8, 12, 12), border_radius=2)
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
 
 # PLAYER INIT
 player_width = 24 * TILE_SCALE
@@ -149,6 +200,14 @@ harvest_progress = 0
 player_max_health = 100
 player_current_health = 100
 desert_damage_timer = 0
+
+is_swinging = False
+swing_timer = 0
+swing_duration = 12
+swing_angle = 0
+
+entity_respawn_timer = 0
+MAX_COWS_IN_FOREST = 6
 
 def generate_all_biomes_at_start(): 
 	world_blueprints.clear()
@@ -176,9 +235,19 @@ def generate_all_biomes_at_start():
 def load_current_biome_objects():
 	active_resources.clear()
 	active_structures.clear()
+	active_mobs.clear()
 	blueprint_list = world_blueprints[current_biome_index]
 	for data in blueprint_list:
 		active_resources.append(Resource(data["x"], data["y"], data["type"]))
+
+	for s_data in structure_blueprints[current_biome_index]:
+		active_structures.append(PlacedStructure(s_data["x"], s_data["y"], s_data["type"], s_data["color"]))
+
+	if current_biome_index == 0:
+		for _ in range(5):
+			cx = random.randint(100, WORLD_WIDTH - 100)
+			cy = random.randint(100,WORLD_HEIGHT - 100)
+			active_mobs.append(CowNPC(cx,cy))
 # core world setup
 generate_all_biomes_at_start()
 load_current_biome_objects()
@@ -188,7 +257,7 @@ hud_font = pygame.font.SysFont("SFProRoundedRegular", 18, bold=True)
 def add_item_to_inventory(item_name, item_color, amount=1):
 	for slot_idx in range(12):
 		if inventory_slots[slot_idx]["item"] == item_name:
-			inventory_slots[slot_idx]["count"] += 1
+			inventory_slots[slot_idx]["count"] += amount
 			return
 	for slot_idx in range(12):
 		if inventory_slots[slot_idx]["item"] is None:
@@ -486,6 +555,11 @@ while True:
 
 		active_hand_item = inventory_slots[selected_hotbar_slot]["item"]
 
+		if not is_swinging:
+			is_swinging = True
+			swing_timer = 0
+			swing_angle = math.atan2(click_world_y - player_center_y, click_world_x - player_center_x)
+
 		if active_hand_item and ITEM_REGISTRY[active_hand_item]["is_structure"]:
 			snap_x = (click_world_x // TILE_SIZE) * TILE_SIZE
 			snap_y = (click_world_y // TILE_SIZE) * TILE_SIZE
@@ -505,10 +579,42 @@ while True:
 				if not space_occupied:
 					meta = ITEM_REGISTRY[active_hand_item]
 					active_structures.append(PlacedStructure(snap_x, snap_y, meta["structure_type"], meta["color"]))
+					structure_blueprints[current_biome_index].append({
+						"x": snap_x,
+						"y": snap_y,
+						"type": meta["structure_type"],
+						"color": meta["color"]
+						})
 
 					inventory_slots[selected_hotbar_slot]["count"] -= 1
 					if inventory_slots[selected_hotbar_slot]["count"] <= 0:
 						inventory_slots[selected_hotbar_slot] = {"item": None, "count": 0, "color": None}
+
+		reach_x = player_center_x + math.cos(swing_angle) * (TILE_SIZE * 1.2)
+		reach_y = player_center_y + math.sin(swing_angle) * (TILE_SIZE * 1.2)
+		attack_hitbox = pygame.Rect(reach_x - 20, reach_y - 20,40,40)
+
+
+
+		for mob in list(active_mobs):
+			if attack_hitbox.colliderect(mob.rect):
+				if swing_timer == 1:
+					base_attack_damage = 5
+					if active_hand_item == "Wooden Sword":
+						base_attack_damage = 10
+					if active_hand_item == "Stone Sword":
+						base_attack_damage = 20
+					if active_hand_item == "Stone Pickaxe":
+						base_attack_damage = 7
+					mob.health -= base_attack_damage
+					mob.rect.x += math.cos(swing_angle) * 24
+					mob.rect.y += math.sin(swing_angle) * 24
+
+					if mob.health <= 0:
+						add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
+						process_xp_gain(XP_REWARDS["cow"])
+						active_mobs.remove(mob)
+
 
 		hovered_res = None
 		for res in active_resources:
@@ -633,8 +739,49 @@ while True:
 		else:
 			player_world_x = 0
 
+	for mob in active_mobs:
+		mob.update()
+
+	if is_swinging:
+		swing_timer += 1
+		if swing_timer >= swing_duration:
+			is_swinging = False
+			swing_timer = 0
+
+
+	if current_biome_index == 0:
+		if len(active_mobs) < MAX_COWS_IN_FOREST:
+			entity_respawn_timer +=1
+			if entity_respawn_timer >= 600:
+				entity_respawn_timer = 0
+				left_bound_end = player_world_x - 400
+				right_bound_start = player_world_x + 400
+
+				top_bound_end = player_world_y - 400
+				bottom_bound_start = player_world_y + 400
+
+				possible_x = []
+				if left_bound_end >= 50:
+					possible_x.append(random.randint(50,left_bound_end))
+				if right_bound_start <= WORLD_WIDTH - 50:
+					possible_x.append(random.randint(right_bound_start, WORLD_WIDTH - 50))
+				rx = random.choice(possible_x) if possible_x else random.randint(50, WORLD_WIDTH - 50)
+
+				possible_y = []
+				if top_bound_end >= 50:
+					possible_y.append(random.randint(50, top_bound_end))
+				if bottom_bound_start <= WORLD_HEIGHT - 50:
+					possible_y.append(random.randint(bottom_bound_start, WORLD_HEIGHT - 50))
+				ry = random.choice(possible_y) if possible_y else random.randint(50, WORLD_HEIGHT - 50)
+
+				active_mobs.append(CowNPC(rx, ry))
+
+	else:
+		entity_respawn_timer = 0
+
 	if current_biome_index == 1:
-		has_protection = False
+		inv_counts = get_total_inventory_counts()
+		has_protection = "Leather Armor" in inv_counts
 		if not has_protection:
 			desert_damage_timer += 1
 			if desert_damage_timer >= 60:
@@ -668,11 +815,28 @@ while True:
 	for resource in active_resources:
 		resource.draw(screen, camera_x, camera_y)
 
+	for mob in active_mobs:
+		mob.draw(screen, camera_x, camera_y)
+
 	player_screen_x = player_world_x - camera_x
 	player_screen_y = player_world_y - camera_y
 
 	player_draw_rect = pygame.Rect(player_screen_x, player_screen_y, player_width, player_height)
 	pygame.draw.rect(screen, (240,240,240), player_draw_rect)
+
+	if is_swinging:
+		anim_pct = swing_timer / swing_duration
+		# Sweeps vector slice line across an arc relative to initial click position
+		current_arc_angle = swing_angle - (math.pi / 4) + ((math.pi / 2) * anim_pct)
+		
+		p_center_x = player_screen_x + (player_width // 2)
+		p_center_y = player_screen_y + (player_height // 2)
+		
+		slash_x = p_center_x + math.cos(current_arc_angle) * (TILE_SIZE * 1.1)
+		slash_y = p_center_y + math.sin(current_arc_angle) * (TILE_SIZE * 1.1)
+		
+		pygame.draw.line(screen, (255, 255, 255), (p_center_x, p_center_y), (slash_x, slash_y), 3)
+		pygame.draw.circle(screen, (0, 200, 255), (int(slash_x), int(slash_y)), 4)
 	draw_hud_and_inventories(screen)
 	pygame.display.flip()
 	clock.tick(60)
