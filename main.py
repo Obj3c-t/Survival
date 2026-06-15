@@ -58,12 +58,25 @@ ITEM_REGISTRY = {
 	"Iron Ore": {"color": (165, 42, 42), "is_structure": False, "structure_type": None},
 	"Leather": {"color": (150, 90, 50), "is_structure": False, "structure_type": None},
 	"Leather Armor": {"color": (100, 65, 35), "is_structure": False, "structure_type": None},
-	"Wooden Sword": {"color": (170, 110, 50), "is_structure": False, "structure_type": None},
-	"Stone Sword": {"color": (150, 150, 150), "is_structure": False, "structure_type": None},
+	"Fists": {
+		"color": (240,240,240), "is_structure": False, "structure_type": None,
+		"swing_duration": 10, "arc_range": math.pi / 2, "blade_length":35, "trail_color": (200,220,255,150)
+	},
+	"Wooden Sword": {
+		"color": (170, 110, 50), "is_structure": False, "structure_type": None,
+		"swing_duration": 14, "arc_range": math.pi * 0.7, "blade_length": 55, "trail_color": (210, 180, 140, 180)
+	},
+	"Stone Sword": {
+		"color": (150, 150, 150), "is_structure": False, "structure_type": None,
+		"swing_duration": 18, "arc_range": math.pi * 0.8, "blade_length": 65, "trail_color": (180, 180, 180, 200)
+	},
+	"Stone Pickaxe": {
+		"color": (190, 190, 190), "is_structure": False, "structure_type": None,
+		"swing_duration": 22, "arc_range": math.pi * 0.5, "blade_length": 50, "trail_color": (130, 200, 240, 160)
+	},
 	"Workbench": {"color": (160, 110, 60), "is_structure": True, "structure_type": "workbench"},
 	"Furnace": {"color": (80, 80, 80), "is_structure": True, "structure_type": "furnace"},
-	"Anvil": {"color": (50, 50, 55), "is_structure": True, "structure_type": "anvil"},
-	"Stone Pickaxe": {"color": (190, 190, 190), "is_structure": False, "structure_type": None}
+	"Anvil": {"color": (50, 50, 55), "is_structure": True, "structure_type": "anvil"}
 }
 
 RECIPES = [
@@ -399,8 +412,9 @@ def draw_hud_and_inventories(surface):
 					surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
 		craft_x = inv_x + inv_w + 20
 		craft_w = 280
-		pygame.draw.rect(surface, (30,30,30,240), (craft_x, inv_y, craft_w, inv_h), border_radius = 10)
-		pygame.draw.rect(surface, (100,100,100), (craft_x, inv_y, craft_w, inv_h), 2, border_radius=10)
+		craft_h = 45 + (len(RECIPES) * 38) + 15
+		pygame.draw.rect(surface, (30,30,30,240), (craft_x, inv_y, craft_w, craft_h), border_radius = 10)
+		pygame.draw.rect(surface, (100,100,100), (craft_x, inv_y, craft_w, craft_h), 2, border_radius=10)
 		c_title = hud_font.render("Crafting", True, (0, 200, 255))
 		surface.blit(c_title, (craft_x + 15, inv_y + 12))
 
@@ -559,6 +573,12 @@ while True:
 			is_swinging = True
 			swing_timer = 0
 			swing_angle = math.atan2(click_world_y - player_center_y, click_world_x - player_center_x)
+
+			weapon_meta = ITEM_REGISTRY.get(active_hand_item, ITEM_REGISTRY["Fists"])
+			if "swing_duration" in weapon_meta:
+				swing_duration = weapon_meta["swing_duration"]
+			else:
+				swing_duration = 12
 
 		if active_hand_item and ITEM_REGISTRY[active_hand_item]["is_structure"]:
 			snap_x = (click_world_x // TILE_SIZE) * TILE_SIZE
@@ -825,18 +845,53 @@ while True:
 	pygame.draw.rect(screen, (240,240,240), player_draw_rect)
 
 	if is_swinging:
-		anim_pct = swing_timer / swing_duration
-		# Sweeps vector slice line across an arc relative to initial click position
-		current_arc_angle = swing_angle - (math.pi / 4) + ((math.pi / 2) * anim_pct)
-		
-		p_center_x = player_screen_x + (player_width // 2)
-		p_center_y = player_screen_y + (player_height // 2)
-		
-		slash_x = p_center_x + math.cos(current_arc_angle) * (TILE_SIZE * 1.1)
-		slash_y = p_center_y + math.sin(current_arc_angle) * (TILE_SIZE * 1.1)
-		
-		pygame.draw.line(screen, (255, 255, 255), (p_center_x, p_center_y), (slash_x, slash_y), 3)
-		pygame.draw.circle(screen, (0, 200, 255), (int(slash_x), int(slash_y)), 4)
+			active_hand_item = inventory_slots[selected_hotbar_slot]["item"]
+			
+			w_data = ITEM_REGISTRY.get(active_hand_item)
+			if w_data is None or "blade_length" not in w_data:
+				w_data = ITEM_REGISTRY["Fists"]
+
+			anim_pct = swing_timer / swing_duration
+			
+			
+			duration = w_data["swing_duration"]
+			arc_range = w_data["arc_range"]
+			length = w_data["blade_length"]
+			t_color = w_data["trail_color"]
+
+			p_center_x = player_screen_x + (player_width // 2)
+			p_center_y = player_screen_y + (player_height // 2)
+
+			
+			trail_points = [(p_center_x, p_center_y)]
+			
+			
+			steps = min(5, swing_timer + 1)
+			for i in range(steps):
+				
+				past_pct = (swing_timer - i) / swing_duration
+				past_angle = swing_angle - (arc_range / 2) + (arc_range * past_pct)
+				
+				tx = p_center_x + math.cos(past_angle) * length
+				ty = p_center_y + math.sin(past_angle) * length
+				trail_points.append((tx, ty))
+
+			
+			if len(trail_points) >= 3:
+				trail_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+				
+				
+				pygame.draw.polygon(trail_surf, t_color, trail_points)
+				
+				
+				lead_angle = swing_angle - (arc_range / 2) + (arc_range * anim_pct)
+				lx = p_center_x + math.cos(lead_angle) * length
+				ly = p_center_y + math.sin(lead_angle) * length
+				pygame.draw.line(trail_surf, (255, 255, 255, 240), (p_center_x, p_center_y), (lx, ly), 3)
+				pygame.draw.circle(trail_surf, (255, 255, 255, 255), (int(lx), int(ly)), 3)
+				
+				
+				screen.blit(trail_surf, (0, 0))
 	draw_hud_and_inventories(screen)
 	pygame.display.flip()
 	clock.tick(60)
