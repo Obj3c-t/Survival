@@ -6,7 +6,7 @@
 # however i quickly ditched that platformer and it shows as a different project even though i started coding this and renamed it later
 
 # GAME CONFIG & BASIC SETTINGS
-import pygame, sys, random, math
+import pygame, sys, random, math, msvcrt
 
 pygame.init()
 
@@ -109,7 +109,9 @@ inventory_slots = {
 }
 is_inventory_open = False
 selected_hotbar_slot = 0
-
+terminal_input_buffer = ""
+is_console_open = False
+console_input_text = ""
 dragged_item = None
 drag_source_slot = None
 
@@ -501,7 +503,6 @@ def draw_hud_and_inventories(surface):
 def process_console_cheat_command(command_text):
 	global player_current_health, player_max_health
 	
-
 	parts = command_text.strip().split()
 	if not parts:
 		return
@@ -509,11 +510,10 @@ def process_console_cheat_command(command_text):
 	base_cmd = parts[0].lower()
 
 	if base_cmd == "heal":
-		player_current_health = player_max_health[cite: 1]
+		player_current_health = player_max_health
 		print("[CONSOLE CHEAT] Health fully restored!")
 
 	elif base_cmd == "give" and len(parts) >= 2:
-		
 		if parts[-1].isdigit():
 			amount = int(parts[-1])
 			item_name = " ".join(parts[1:-1])
@@ -521,22 +521,28 @@ def process_console_cheat_command(command_text):
 			amount = 1
 			item_name = " ".join(parts[1:])
 
-		
-		if item_name in ITEM_REGISTRY[cite: 1]:
-			meta = ITEM_REGISTRY[item_name][cite: 1]
-			add_item_to_inventory(item_name, meta["color"], amount)[cite: 1]
-			print(f"[CONSOLE CHEAT] Added {amount}x {item_name} to inventory.")[cite: 1]
+		# Convert input names to title case if they match registry keys
+		# E.g., 'wood' -> 'Wood', 'solarite ore' -> 'Solarite Ore'
+		matched_key = None
+		for key in ITEM_REGISTRY.keys():
+			if key.lower() == item_name.lower():
+				matched_key = key
+				break
+
+		if matched_key:
+			meta = ITEM_REGISTRY[matched_key]
+			add_item_to_inventory(matched_key, meta["color"], amount)
+			print(f"[CONSOLE CHEAT] Added {amount}x {matched_key} to inventory.")
 		else:
-			print(f"[CONSOLE CHEAT] Error: '{item_name}' not found in ITEM_REGISTRY.")[cite: 1]
+			print(f"[CONSOLE CHEAT] Error: '{item_name}' not found in ITEM_REGISTRY.")
 			
 	elif base_cmd == "xp" and len(parts) >= 2:
 		if parts[1].isdigit():
 			amt = int(parts[1])
-			process_xp_gain(amt)[cite: 1]
-			print(f"[CONSOLE CHEAT] Awarded {amt} XP.")[cite: 1]
+			process_xp_gain(amt)
+			print(f"[CONSOLE CHEAT] Awarded {amt} XP.")
 	else:
-		print("[CONSOLE CHEAT] Unknown command. Try: 'heal', 'xp 500', or 'give Solarite Ore 50'")
-
+		print("[CONSOLE CHEAT] Unknown command. Try: 'heal', 'xp 500', or 'give wood 50'")
 # MAIN ENGINE LOOP
 while True:
 	mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -549,20 +555,33 @@ while True:
 			pygame.quit()
 			sys.exit()
 		elif event.type == pygame.KEYDOWN:
-			if event.key == pygame.K_e:
-				is_inventory_open = not is_inventory_open
-				if not is_inventory_open and dragged_item is not None:
-					inventory_slots[drag_source_slot] = dragged_item
-					dragged_item = None
-					drag_source_slot = None
-			elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4]:
-				selected_hotbar_slot = event.key - pygame.K_1
-			elif event.key == pygame.K_BACKQUOTE: # The ` key right next to the 1 key
-				print("\n=== CHEAT CONSOLE ACTIVE ===")
-				# This cleanly halts Pygame frame rendering while you type in the terminal
-				user_input = input("Enter cheat command: ")
-				process_console_cheat_command(user_input)
-				print("============================\n")
+
+			if is_console_open:
+				if event.key == pygame.K_BACKQUOTE or event.key == pygame.K_ESCAPE:
+					is_console_open = False
+				elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+					print(f"[Executing]: {console_input_text}")
+					process_console_cheat_command(console_input_text)
+					console_input_text = ""
+					is_console_open = False  # Close console after entering cheat
+				elif event.key == pygame.K_BACKSPACE:
+					console_input_text = console_input_text[:-1]
+				else:
+					# Append the actual text character typed
+					if event.unicode:
+						console_input_text += event.unicode
+			else:			
+				if event.key == pygame.K_e:
+					is_inventory_open = not is_inventory_open
+					if not is_inventory_open and dragged_item is not None:
+						inventory_slots[drag_source_slot] = dragged_item
+						dragged_item = None
+						drag_source_slot = None
+				elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4]:
+					selected_hotbar_slot = event.key - pygame.K_1
+				elif event.key == pygame.K_BACKQUOTE: # The ` key right next to the 1 key
+					is_console_open = True
+					print("\n>>> CHEAT SYSTEM LISTENING: Click your terminal window and type your command, then press Enter! <<<")
 		elif event.type == pygame.MOUSEBUTTONDOWN:
 			if event.button == 1:
 				clicked_slot = None
@@ -756,10 +775,11 @@ while True:
 	keys = pygame.key.get_pressed()
 	# X AXIS MOVEMENT AND COLLISION
 	dx = 0
-	if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-		dx -= player_speed
-	if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-		dx += player_speed
+	if not is_console_open:
+		if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+			dx -= player_speed
+		if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+			dx += player_speed
 
 	player_world_x += dx
 	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
@@ -771,10 +791,11 @@ while True:
 				player_world_x = obj.rect.right
 	# Y AXIS MOVEMENT AND COLLISION
 	dy = 0	
-	if keys[pygame.K_UP] or keys[pygame.K_w]:
-		dy -= player_speed
-	if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-		dy += player_speed
+	if not is_console_open:
+		if keys[pygame.K_UP] or keys[pygame.K_w]:
+			dy -= player_speed
+		if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+			dy += player_speed
 	player_world_y += dy
 	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 	for obj in active_resources + active_structures:
@@ -935,6 +956,18 @@ while True:
 				
 				
 				screen.blit(trail_surf, (0, 0))
+
+	if is_console_open:
+		# Translucent black overlay bar across the top
+		console_surf = pygame.Surface((SCREEN_WIDTH, 40), pygame.SRCALPHA)
+		console_surf.fill((0, 0, 0, 200))
+		screen.blit(console_surf, (0, 0))
+		
+		# Draw text line
+		cheat_display_string = f"CHEAT CONSOLE: {console_input_text}_"
+		console_render = hud_font.render(cheat_display_string, True, (0, 255, 150))
+		screen.blit(console_render, (20, 10))
 	draw_hud_and_inventories(screen)
 	pygame.display.flip()
 	clock.tick(60)
+
