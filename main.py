@@ -498,7 +498,44 @@ def draw_hud_and_inventories(surface):
 # 		#render title labels
 # 		label_surface = ui_font.render(slot["label"], True, (230,230,230))
 # 		surface.blit(label_surface, (current_x + (slot_size//2) - (label_surface.get_width() // 2), slot_y - 18))
+def process_console_cheat_command(command_text):
+	global player_current_health, player_max_health
+	
 
+	parts = command_text.strip().split()
+	if not parts:
+		return
+
+	base_cmd = parts[0].lower()
+
+	if base_cmd == "heal":
+		player_current_health = player_max_health[cite: 1]
+		print("[CONSOLE CHEAT] Health fully restored!")
+
+	elif base_cmd == "give" and len(parts) >= 2:
+		
+		if parts[-1].isdigit():
+			amount = int(parts[-1])
+			item_name = " ".join(parts[1:-1])
+		else:
+			amount = 1
+			item_name = " ".join(parts[1:])
+
+		
+		if item_name in ITEM_REGISTRY[cite: 1]:
+			meta = ITEM_REGISTRY[item_name][cite: 1]
+			add_item_to_inventory(item_name, meta["color"], amount)[cite: 1]
+			print(f"[CONSOLE CHEAT] Added {amount}x {item_name} to inventory.")[cite: 1]
+		else:
+			print(f"[CONSOLE CHEAT] Error: '{item_name}' not found in ITEM_REGISTRY.")[cite: 1]
+			
+	elif base_cmd == "xp" and len(parts) >= 2:
+		if parts[1].isdigit():
+			amt = int(parts[1])
+			process_xp_gain(amt)[cite: 1]
+			print(f"[CONSOLE CHEAT] Awarded {amt} XP.")[cite: 1]
+	else:
+		print("[CONSOLE CHEAT] Unknown command. Try: 'heal', 'xp 500', or 'give Solarite Ore 50'")
 
 # MAIN ENGINE LOOP
 while True:
@@ -520,6 +557,12 @@ while True:
 					drag_source_slot = None
 			elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4]:
 				selected_hotbar_slot = event.key - pygame.K_1
+			elif event.key == pygame.K_BACKQUOTE: # The ` key right next to the 1 key
+				print("\n=== CHEAT CONSOLE ACTIVE ===")
+				# This cleanly halts Pygame frame rendering while you type in the terminal
+				user_input = input("Enter cheat command: ")
+				process_console_cheat_command(user_input)
+				print("============================\n")
 		elif event.type == pygame.MOUSEBUTTONDOWN:
 			if event.button == 1:
 				clicked_slot = None
