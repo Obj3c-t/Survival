@@ -56,6 +56,10 @@ ITEM_REGISTRY = {
 	"Stone": {"color": (128, 128, 128), "is_structure": False, "structure_type": None},
 	"Copper Ore": {"color": (184, 115, 51), "is_structure": False, "structure_type": None},
 	"Iron Ore": {"color": (165, 42, 42), "is_structure": False, "structure_type": None},
+	"Solarite Ore": {"color": (255, 140, 0), "is_structure": False, "structure_type": None},
+	"Copper Bar": {"color": (212, 115, 71), "is_structure": False, "structure_type": None},
+	"Iron Bar": {"color": (210, 210, 210), "is_structure": False, "structure_type": None},
+	"Solarite Bar": {"color": (255, 69, 0), "is_structure": False, "structure_type": None},
 	"Leather": {"color": (150, 90, 50), "is_structure": False, "structure_type": None},
 	"Leather Armor": {"color": (100, 65, 35), "is_structure": False, "structure_type": None},
 	"Fists": {
@@ -127,7 +131,8 @@ class PlacedStructure:
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
 			pygame.draw.rect(surface, self.color,(screen_x,screen_y,TILE_SIZE, TILE_SIZE), border_radius=4)
 			pygame.draw.rect(surface, (255,255,255), (screen_x,screen_y,TILE_SIZE,TILE_SIZE), 2, border_radius=4)
-
+			lbl_surf = ui_font.render(self.type.upper(), True, (255, 255, 255))
+			surface.blit(lbl_surf, (screen_x + (TILE_SIZE // 2) - (lbl_surf.get_width() // 2), screen_y - 18))
 class Resource:
 	def __init__(self, world_x, world_y, resource_type):
 		super(Resource, self).__init__()
@@ -152,6 +157,10 @@ class Resource:
 			self.color = (165, 42, 42)
 			self.item_yield = "Iron Ore"
 			self.max_health = 900
+		elif self.type == "solarite_ore":
+			self.color = (255, 140, 0)
+			self.item_yield = "Solarite Ore"
+			self.max_health = 1700
 		self.health = self.max_health
 
 
@@ -247,6 +256,8 @@ def generate_all_biomes_at_start():
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "copper_ore"})
 					elif spawn_roll <= 6: # 2% Iron chance
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "iron_ore"})
+					elif spawn_roll <= 7:
+						world_blueprints[biome_idx].append({"x": x, "y":y, "type": "solarite_ore"})
 def load_current_biome_objects():
 	active_resources.clear()
 	active_structures.clear()
@@ -329,6 +340,8 @@ def draw_hud_and_inventories(surface):
 	slot_size = 50
 	padding = 10
 
+	hovered_item = None
+
 	xp_bar_w, xp_bar_h = 400,12
 	xp_x = (SCREEN_WIDTH //2) - (xp_bar_w // 2)
 	xp_y = 20
@@ -380,6 +393,8 @@ def draw_hud_and_inventories(surface):
 			cnt_txt = ui_font.render(str(slot_data["count"]), True, (255,255,255))
 			surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
 
+			if slot_rect.collidepoint(mouse_pos):
+				hovered_item_name = slot_data["item"]
 	inv_grid_rects = {}
 	craft_panel_rects = []
 
@@ -412,6 +427,9 @@ def draw_hud_and_inventories(surface):
 					pygame.draw.rect(surface, slot_data["color"], (sx + 8, sy + 8, slot_size - 16, slot_size - 16), border_radius=3)
 					cnt_txt = ui_font.render(str(slot_data["count"]), True, (255,255,255))
 					surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
+					if slot_rect.collidepoint(mouse_pos):
+						hovered_item_name = slot_data["item"]
+
 		craft_x = inv_x + inv_w + 20
 		craft_w = 280
 		craft_h = 45 + (len(RECIPES) * 38) + 15
@@ -458,7 +476,19 @@ def draw_hud_and_inventories(surface):
 		surface.blit(c_txt, (mx + ds//2 - c_txt.get_width(), my + ds//2 - c_txt.get_height()))
 	return hotbar_rects, inv_grid_rects, craft_panel_rects
 
+	if hovered_item_name is not None and dragged_item is None:
+		tip_txt = ui_font.render(hovered_item_name, True, (255,255,255))
+		tip_w = tip_txt.get_width() + 12
+		tip_h = tip_txt.get_height() + 8
+		tx = mouse_pos[0] + 12
+		ty = moue_pos[1] + 12
+		if tx + tip_w > SCREEN_WIDTH: tx = SCREEN_WIDTH - tip_w - 5
+		if ty + tiph > SCREEN_HEIGHT: ty = SCREEN_HEIGHT - tip_h - 5
 
+		pygame.draw.rect(surface, (20, 20 ,20, 240), (tx, ty, tip_w, tip_h), border_radius=4)
+		pygame.draw.rect(surface, (100, 100, 100), (tx, ty, tip_w, tip_h), 1, border_radius=4)
+		surface.blit(tip_txt, (tx + 6, ty + 4))
+	return hotbar_rects, inv_grid_rects, craft_panel_rects
 
 
 
@@ -720,6 +750,8 @@ while True:
 					harvest_speed = 3
 				elif active_harvest_target.type == "tree":
 					harvest_speed = 2
+				elif active_harvest_target.type == "solarite_ore":
+					harvest_speed = 2
 
 			harvest_progress += harvest_speed
 
@@ -971,3 +1003,4 @@ while True:
 	pygame.display.flip()
 	clock.tick(60)
 
+ 
