@@ -181,8 +181,11 @@ class CowNPC:
 		self.dx = 0
 		self.dy = 0
 		self.speed = 1 * TILE_SCALE
-
+		self.damage_timer = 0
 	def update(self):
+		if self.damage_timer > 0:
+			self.damage_timer -=1
+
 		self.move_timer += 1
 		if self.move_timer >= 120:
 			self.move_timer = 0
@@ -203,8 +206,18 @@ class CowNPC:
 		screen_x = self.rect.x - camera_x
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
-			pygame.draw.rect(surface, self.color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE), border_radius = 6)
-			pygame.draw.rect(surface, (60,45,30), (screen_x + 8, screen_y + 8, 12, 12), border_radius=2)
+			if self.damage_timer > 0:
+				shake_offset = math.sin(self.damage_timer * 5) * 8
+				screen_x += shake_offset
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			pygame.draw.rect(mob_surf, self.color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE), border_radius = 6)
+			pygame.draw.rect(mob_surf, (60,45,30), (screen_x + 8, screen_y + 8, 12, 12), border_radius=2)
+
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
 			if self.health < self.max_health:
 				bar_w = TILE_SIZE
 				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
@@ -223,6 +236,7 @@ harvest_progress = 0
 # WORLD GEN ENGINES
 player_max_health = 100
 player_current_health = 100
+player_damage_timer = 0
 desert_damage_timer = 0
 
 is_swinging = False
@@ -340,7 +354,7 @@ def draw_hud_and_inventories(surface):
 	slot_size = 50
 	padding = 10
 
-	hovered_item = None
+	hovered_item_name = None
 
 	xp_bar_w, xp_bar_h = 400,12
 	xp_x = (SCREEN_WIDTH //2) - (xp_bar_w // 2)
@@ -393,8 +407,8 @@ def draw_hud_and_inventories(surface):
 			cnt_txt = ui_font.render(str(slot_data["count"]), True, (255,255,255))
 			surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
 
-			if slot_rect.collidepoint(mouse_pos):
-				hovered_item_name = slot_data["item"]
+		if slot_rect.collidepoint(mouse_pos):
+			hovered_item_name = slot_data["item"]
 	inv_grid_rects = {}
 	craft_panel_rects = []
 
@@ -427,8 +441,8 @@ def draw_hud_and_inventories(surface):
 					pygame.draw.rect(surface, slot_data["color"], (sx + 8, sy + 8, slot_size - 16, slot_size - 16), border_radius=3)
 					cnt_txt = ui_font.render(str(slot_data["count"]), True, (255,255,255))
 					surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
-					if slot_rect.collidepoint(mouse_pos):
-						hovered_item_name = slot_data["item"]
+				if slot_rect.collidepoint(mouse_pos):
+					hovered_item_name = slot_data["item"]
 
 		craft_x = inv_x + inv_w + 20
 		craft_w = 280
@@ -474,16 +488,16 @@ def draw_hud_and_inventories(surface):
 		pygame.draw.rect(surface, dragged_item["color"], (mx - ds//2, my - ds//2, ds, ds), border_radius=3)
 		c_txt = ui_font.render(str(dragged_item["count"]), True, (255,255,255))
 		surface.blit(c_txt, (mx + ds//2 - c_txt.get_width(), my + ds//2 - c_txt.get_height()))
-	return hotbar_rects, inv_grid_rects, craft_panel_rects
+	
 
 	if hovered_item_name is not None and dragged_item is None:
 		tip_txt = ui_font.render(hovered_item_name, True, (255,255,255))
 		tip_w = tip_txt.get_width() + 12
 		tip_h = tip_txt.get_height() + 8
 		tx = mouse_pos[0] + 12
-		ty = moue_pos[1] + 12
+		ty = mouse_pos[1] + 12
 		if tx + tip_w > SCREEN_WIDTH: tx = SCREEN_WIDTH - tip_w - 5
-		if ty + tiph > SCREEN_HEIGHT: ty = SCREEN_HEIGHT - tip_h - 5
+		if ty + tip_h > SCREEN_HEIGHT: ty = SCREEN_HEIGHT - tip_h - 5
 
 		pygame.draw.rect(surface, (20, 20 ,20, 240), (tx, ty, tip_w, tip_h), border_radius=4)
 		pygame.draw.rect(surface, (100, 100, 100), (tx, ty, tip_w, tip_h), 1, border_radius=4)
@@ -855,6 +869,9 @@ while True:
 		else:
 			player_world_x = 0
 
+	if player_damage_timer > 0:
+		player_damage_timer -= 1
+
 	for mob in active_mobs:
 		mob.update()
 
@@ -902,6 +919,7 @@ while True:
 			desert_damage_timer += 1
 			if desert_damage_timer >= 60:
 				player_current_health -= 5
+				player_damage_timer = 20
 				desert_damage_timer = 0
 				if player_current_health <= 0:
 					player_world_x = WORLD_WIDTH // 2
@@ -937,8 +955,18 @@ while True:
 	player_screen_x = player_world_x - camera_x
 	player_screen_y = player_world_y - camera_y
 
-	player_draw_rect = pygame.Rect(player_screen_x, player_screen_y, player_width, player_height)
-	pygame.draw.rect(screen, (240,240,240), player_draw_rect)
+	if player_damage_timer > 0:
+		shake_offset = math.sin(player_damage_timer * 1.5) * 8
+		player_screen_x +=shake_offset
+	player_surf = pygame.Surface((player_width, player_height), pygame.SRCALPHA)
+	# player_draw_rect = pygame.Rect(player_screen_x, player_screen_y, player_width, player_height)
+	pygame.draw.rect(player_surf, (240,240,240), (0,0, player_width, player_height))
+
+	if player_damage_timer > 0:
+		red_mask = pygame.Surface((player_width, player_height), pygame.SRCALPHA)
+		red_mask.fill((255, 0, 0, 140))
+		player_surf.blit(red_mask, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+	screen.blit(player_surf, (player_screen_x, player_screen_y))
 
 	if is_swinging:
 			active_hand_item = inventory_slots[selected_hotbar_slot]["item"]
