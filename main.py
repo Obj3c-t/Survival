@@ -210,8 +210,8 @@ class CowNPC:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-			pygame.draw.rect(mob_surf, self.color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE), border_radius = 6)
-			pygame.draw.rect(mob_surf, (60,45,30), (screen_x + 8, screen_y + 8, 12, 12), border_radius=2)
+			pygame.draw.rect(mob_surf, self.color, (0, 0, TILE_SIZE, TILE_SIZE), border_radius = 6)
+			pygame.draw.rect(mob_surf, (60,45,30), (8,8, 12, 12), border_radius=2)
 
 			if self.damage_timer > 0:
 				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
@@ -587,11 +587,13 @@ def process_console_cheat_command(command_text):
 			print(f"[CONSOLE CHEAT] Awarded {amt} XP.")
 	else:
 		print("[CONSOLE CHEAT] Unknown command. Try: 'heal', 'xp 500', or 'give wood 50'")
+
+
 # MAIN ENGINE LOOP
 while True:
 	mouse_x, mouse_y = pygame.mouse.get_pos()
 
-	hotbar_rects, inv_grid_rects, craft_panel_rects = draw_hud_and_inventories(pygame.Surface((1,1)))
+	hotbar_rects, inv_grid_rects, craft_panel_rects = draw_hud_and_inventories(screen)
 
 	# EVENT PROCESSING
 	for event in pygame.event.get():
