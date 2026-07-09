@@ -735,6 +735,7 @@ while True:
 					if active_hand_item == "Stone Pickaxe":
 						base_attack_damage = 7
 					mob.health -= base_attack_damage
+					mob.damage_timer = 20
 					mob.rect.x += math.cos(swing_angle) * 24
 					mob.rect.y += math.sin(swing_angle) * 24
 
