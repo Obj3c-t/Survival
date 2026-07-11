@@ -97,20 +97,24 @@ RECIPES = [
 	# "tree": 0,
 	# "rock": 0
 # }
-inventory_slots = {
-	0: {"item": None, "count": 0, "color": None},
-	1: {"item": None, "count": 0, "color": None},
-	2: {"item": None, "count": 0, "color": None},
-	3: {"item": None, "count": 0, "color": None},
-	4: {"item": None, "count": 0, "color": None},
-	5: {"item": None, "count": 0, "color": None},
-	6: {"item": None, "count": 0, "color": None},
-	7: {"item": None, "count": 0, "color": None},
-	8: {"item": None, "count": 0, "color": None},
-	9: {"item": None, "count": 0, "color": None},
-	10: {"item": None, "count": 0, "color": None},
-	11: {"item": None, "count": 0, "color": None},
-}
+# inventory_slots = {
+	# 0: {"item": None, "count": 0, "color": None},
+	# 1: {"item": None, "count": 0, "color": None},
+	# 2: {"item": None, "count": 0, "color": None},
+	# 3: {"item": None, "count": 0, "color": None},
+	# 4: {"item": None, "count": 0, "color": None},
+	# 5: {"item": None, "count": 0, "color": None},
+	# 6: {"item": None, "count": 0, "color": None},
+	# 7: {"item": None, "count": 0, "color": None},
+	# 8: {"item": None, "count": 0, "color": None},
+	# 9: {"item": None, "count": 0, "color": None},
+	# 10: {"item": None, "count": 0, "color": None},
+	# 11: {"item": None, "count": 0, "color": None},
+# }
+TOTAL_SLOTS = 24
+inventory_slots = {i: {"item": None, "count": 0, "color": None} for i in range(TOTAL_SLOTS)}
+armor_slot = {"item": None, "count": 0, "color": None}
+
 is_inventory_open = False
 selected_hotbar_slot = 0
 terminal_input_buffer = ""
@@ -295,14 +299,14 @@ load_current_biome_objects()
 ui_font = pygame.font.SysFont("SFProRoundedRegular", 14, bold=True)
 hud_font = pygame.font.SysFont("SFProRoundedRegular", 18, bold=True)
 def add_item_to_inventory(item_name, item_color, amount=1):
-	for slot_idx in range(12):
+	for slot_idx in range(TOTAL_SLOTS):
 		if inventory_slots[slot_idx]["item"] == item_name:
 			inventory_slots[slot_idx]["count"] += amount
 			return
-	for slot_idx in range(12):
+	for slot_idx in range(TOTAL_SLOTS):
 		if inventory_slots[slot_idx]["item"] is None:
 			inventory_slots[slot_idx]["item"] = item_name
-			inventory_slots[slot_idx]["count"] = 1
+			inventory_slots[slot_idx]["count"] = amount
 			inventory_slots[slot_idx]["color"] = item_color
 			return
 
@@ -311,12 +315,14 @@ def get_total_inventory_counts():
 	for data in inventory_slots.values():
 		if data["item"] is not None:
 			counts[data["item"]] = counts.get(data["item"], 0) + data["count"] 
+	if armor_slot["item"] is not None:
+		counts[armor_slot["item"]] = counts.get(armor_slot["item"], 0) + armor_slot["count"]
 	return counts
 
 def deduct_crafting_resources(ingredients):
 	for item, req_amt in ingredients.items():
 		rem = req_amt
-		for idx in range(12):
+		for idx in range(TOTAL_SLOTS):
 			if inventory_slots[idx]["item"] == item:
 				if inventory_slots[idx]["count"] >= rem:
 					inventory_slots[idx]["count"] -= rem
@@ -411,11 +417,13 @@ def draw_hud_and_inventories(surface):
 			hovered_item_name = slot_data["item"]
 	inv_grid_rects = {}
 	craft_panel_rects = []
+	armor_slot_rect = pygame.Rect(0,0,0,0)
+	trash_slot_rect = pygame.Rect(0,0,0,0)
 
 	if is_inventory_open:
-		inv_w = (slot_size * 4) + (padding * 5)
-		inv_h = (slot_size * 2) + (padding * 3) + 40
-		inv_x = (SCREEN_WIDTH // 2) - (inv_w // 2) - 150
+		inv_w = (slot_size * 5) + (padding * 6) + 120
+		inv_h = (slot_size * 4) + (padding * 5) + 60
+		inv_x = (SCREEN_WIDTH // 2) - (inv_w // 2) - 130
 		inv_y = (SCREEN_HEIGHT // 2) - (inv_h // 2) - 30
 
 		pygame.draw.rect(surface, (35, 35, 35), (inv_x, inv_y, inv_w, inv_h), border_radius=10)
@@ -425,9 +433,9 @@ def draw_hud_and_inventories(surface):
 		surface.blit(title, (inv_x + padding + 5, inv_y + 12))
 
 		slot_start_idx = 4
-		for row in range(2):
-			for col in range(4):
-				idx = slot_start_idx + (row * 4) + col
+		for row in range(4):
+			for col in range(5):
+				idx = slot_start_idx + (row * 5) + col
 				sx = inv_x + padding + (col * (slot_size + padding))
 				sy = inv_y + 40 + padding + (row * (slot_size + padding))
 				slot_rect = pygame.Rect(sx, sy, slot_size, slot_size)
@@ -443,6 +451,30 @@ def draw_hud_and_inventories(surface):
 					surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
 				if slot_rect.collidepoint(mouse_pos):
 					hovered_item_name = slot_data["item"]
+		asx = inv_x + (5 * (slot_size + padding)) + padding + 20
+		asy = inv_y + 60
+		armor_slot_rect = pygame.Rect(asx, asy, slot_size, slot_size)
+		pygame.draw.rect(surface, (25, 35, 45), armor_slot_rect, border_radius=5)
+		pygame.draw.rect(surface, (0,150, 255), armor_slot_rect, 1 if drag_source_slot == "armor" else 2, border_radius = 5)
+		as_lbl = ui_font.render("ARMOR", True, (0, 150, 255))
+		surface.blit(as_lbl, (asx + (slot_size//2) - as_lbl.get_width()//2, asy - 18))
+		if armor_slot["item"] is not None and drag_source_slot != "armor":
+			pygame.draw.rect(surface, armor_slot["color"], (asx + 8, asy + 8, slot_size - 16, slot_size - 16), border_radius=3)
+			acnt = ui_font.render(str(armor_slot["count"]), True, (255,255,255))
+			surface.blit(acnt, (asx + slot_size - acnt.get_width() - 5, asy + slot_size - acnt.get_height() - 3))
+		if armor_slot_rect.collidepoint(mouse_pos):
+			hovered_item_name = armor_slot["item"]
+
+		tsx = asx
+		tsy = asy + slot_size + 40
+		trash_slot_rect = pygame.Rect(tsx, tsy, slot_size, slot_size)
+		pygame.draw.rect(surface, (45, 20, 20), trash_slot_rect, border_radius=5)
+		pygame.draw.rect(surface, (255, 50, 50), trash_slot_rect, 2, border_radius=5)
+
+		ts_lbl = ui_font.render("TRASH", True, (255, 50, 50))
+		surface.blit(ts_lbl, (tsx + (slot_size//2) - ts_lbl.get_width()//2, tsy - 18))
+		if trash_slot_rect.collidepoint(mouse_pos):
+			hovered_item_name = "Trash Bin (Click with item to remove)"
 
 		craft_x = inv_x + inv_w + 20
 		craft_w = 280
@@ -502,7 +534,7 @@ def draw_hud_and_inventories(surface):
 		pygame.draw.rect(surface, (20, 20 ,20, 240), (tx, ty, tip_w, tip_h), border_radius=4)
 		pygame.draw.rect(surface, (100, 100, 100), (tx, ty, tip_w, tip_h), 1, border_radius=4)
 		surface.blit(tip_txt, (tx + 6, ty + 4))
-	return hotbar_rects, inv_grid_rects, craft_panel_rects
+	return hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect
 
 
 
@@ -593,7 +625,7 @@ def process_console_cheat_command(command_text):
 while True:
 	mouse_x, mouse_y = pygame.mouse.get_pos()
 
-	hotbar_rects, inv_grid_rects, craft_panel_rects = draw_hud_and_inventories(screen)
+	hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect = draw_hud_and_inventories(screen)
 
 	# EVENT PROCESSING
 	for event in pygame.event.get():
@@ -631,6 +663,7 @@ while True:
 		elif event.type == pygame.MOUSEBUTTONDOWN:
 			if event.button == 1:
 				clicked_slot = None
+				is_armor_click = False
 
 				for idx, r in hotbar_rects.items():
 					if r.collidepoint(mouse_x, mouse_y):
@@ -644,6 +677,14 @@ while True:
 							clicked_slot = idx
 							break
 
+					if trash_slot_rect.collidepoint(mouse_x, mouse_y):
+						if dragged_item is not None:
+							dragged_item = None
+							drag_source_slot = None
+
+					if armor_slot_rect.collidepoint(mouse_x, mouse_y):
+						is_armor_click = True
+
 					for entry in craft_panel_rects:
 						if entry["rect"].collidepoint(mouse_x,mouse_y) and entry["valid"]:
 							rcp = entry["recipe"]
@@ -651,7 +692,26 @@ while True:
 							res_meta = ITEM_REGISTRY[rcp["result"]]
 							add_item_to_inventory(rcp["result"], res_meta["color"], 1)
 							break
-				if clicked_slot is not None:
+
+				if is_armor_click:
+					if dragged_item is None:
+						if armor_slot["item"] is not None:
+							dragged_item = armor_slot.copy()
+							drag_source_slot = "armor"
+							armor_slot = {"item": None, "count": 0, "color": None}
+					else:
+						if "Armor" in dragged_item["item"]:
+							target_slot_data = armor_slot.copy()
+							armor_slot = dragged_item
+
+							if target_slot_data["item"] is not None:
+								dragged_item = target_slot_data
+								drag_source_slot = "armor"
+							else:
+								dragged_item = None
+								drag_source_slot = None
+
+				elif clicked_slot is not None:
 					if dragged_item is None:
 						if inventory_slots[clicked_slot]["item"] is not None:
 							dragged_item = inventory_slots[clicked_slot].copy()
@@ -667,6 +727,7 @@ while True:
 						else:
 							dragged_item = None
 							drag_source_slot = None
+
 	mouse_pressed = pygame.mouse.get_pressed()
 	if mouse_pressed[0] and not is_inventory_open and dragged_item is None:
 		click_world_x = mouse_x + camera_x
@@ -916,8 +977,7 @@ while True:
 		entity_respawn_timer = 0
 
 	if current_biome_index == 1:
-		inv_counts = get_total_inventory_counts()
-		has_protection = "Leather Armor" in inv_counts
+		has_protection = armor_slot["item"] == "Leather Armor"
 		if not has_protection:
 			desert_damage_timer += 1
 			if desert_damage_timer >= 60:
