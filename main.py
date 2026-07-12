@@ -6,7 +6,7 @@
 # however i quickly ditched that platformer and it shows as a different project even though i started coding this and renamed it later
 
 # GAME CONFIG & BASIC SETTINGS
-import pygame, sys, random, math, msvcrt
+import pygame, sys, random, math
 
 pygame.init()
 
@@ -78,19 +78,41 @@ ITEM_REGISTRY = {
 		"color": (190, 190, 190), "is_structure": False, "structure_type": None,
 		"swing_duration": 22, "arc_range": math.pi * 0.5, "blade_length": 50, "trail_color": (130, 200, 240, 160)
 	},
+	"Copper Sword": {
+		"color": (195, 105, 60), "is_structure": False, "structure_type": None,
+		"swing_duration": 16, "arc_range": math.pi * 0.8, "blade_length": 75, "trail_color": (230, 150, 100, 200)
+	},
+	"Iron Sword": {
+		"color": (220, 220, 225), "is_structure": False, "structure_type": None,
+		"swing_duration": 15, "arc_range": math.pi * 0.85, "blade_length": 75, "trail_color": (240, 240, 255, 220)
+	},
+	"Solarite Sword": {
+		"color": (255, 90, 0), "is_structure": False, "structure_type": None,
+		"swing_duration": 12, "arc_range": math.pi * 0.95, "blade_length": 85, "trail_color": (255, 180, 100, 240)
+	},
 	"Workbench": {"color": (160, 110, 60), "is_structure": True, "structure_type": "workbench"},
+	"Coal Kiln": {"color": (40,40,45), "is_structure": True, "structure_type": "coal_kiln"},
 	"Furnace": {"color": (80, 80, 80), "is_structure": True, "structure_type": "furnace"},
-	"Anvil": {"color": (50, 50, 55), "is_structure": True, "structure_type": "anvil"}
+	"Anvil": {"color": (50, 50, 55), "is_structure": True, "structure_type": "anvil"},
+	"Coal": {"color": (20,20,20), "is_structure": False, "structure_type": None}
 }
 
 RECIPES = [
 	{"result": "Workbench", "ingredients": {"Wood": 10}, "station": None},
-	{"result": "Furnace", "ingredients": {"Stone": 20, "Wood": 5}, "station": "workbench"},
-	{"result": "Anvil", "ingredients": {"Stone": 30}, "station": "workbench"},
+	{"result": "Coal Kiln", "ingredients": {"Stone": 20, "Wood": 10}, "station": "workbench"},
+	{"result": "Furnace", "ingredients": {"Stone": 25, "Wood": 5}, "station": "coal_kiln"},
+	{"result": "Anvil", "ingredients": {"Iron Bar": 5}, "station": "workbench"},
 	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
 	{"result": "Leather Armor", "ingredients": {"Leather": 15}, "station": "workbench"},
 	{"result": "Wooden Sword", "ingredients": {"Wood": 6}, "station": None},
-	{"result": "Stone Sword", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"}
+	{"result": "Stone Sword", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
+	{"result": "Coal", "ingredients": {"Wood": 2}, "station": "coal_kiln", "duration": 180},
+	{"result": "Copper Bar", "ingredients": {"Copper Ore": 3, "Coal": 1}, "station": "furnace", "duration": 240},
+	{"result": "Iron Bar", "ingredients": {"Iron Ore": 3, "Coal": 1}, "station": "furnace", "duration": 300},
+	{"result": "Solarite Bar", "ingredients": {"Solarite Ore": 3, "Coal": 2}, "station": "furnace", "duration": 420},
+	{"result": "Copper Sword", "ingredients": {"Wood": 2, "Copper Bar": 5}, "station": "anvil"},
+	{"result": "Iron Sword", "ingredients": {"Wood": 2, "Iron Bar": 5}, "station": "anvil"},
+	{"result": "Solarite Sword", "ingredients": {"Wood": 2, "Solarite Bar": 6}, "station": "anvil"}
 ]
 
 # player_inventory = {
@@ -129,6 +151,16 @@ class PlacedStructure:
 		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
 		self.type = struct_type
 		self.color = color
+		self.active_production = None
+	def update(self):
+		if self.active_production is not None:
+			self.active_production["timer"] += 1
+			if self.active_production["timer"] >= self.active_production["max_duration"]:
+				res_item = self.active_production["result"]
+				res_meta = ITEM_REGISTRY[res_item]
+				add_item_to_inventory(res_item, res_meta["color"], 1)
+				self.active_production = None
+
 	def draw(self, surface, camera_x, camera_y):
 		screen_x = self.rect.x - camera_x
 		screen_y = self.rect.y - camera_y
@@ -137,6 +169,16 @@ class PlacedStructure:
 			pygame.draw.rect(surface, (255,255,255), (screen_x,screen_y,TILE_SIZE,TILE_SIZE), 2, border_radius=4)
 			lbl_surf = ui_font.render(self.type.upper(), True, (255, 255, 255))
 			surface.blit(lbl_surf, (screen_x + (TILE_SIZE // 2) - (lbl_surf.get_width() // 2), screen_y - 18))
+
+			if self.active_production is not None:
+				bar_w = TILE_SIZE
+				bar_h = 6
+				bx = screen_x
+				by = screen_y - 6
+				pygame.draw.rect(surface, (30,30,30), (bx, by, bar_w, bar_h), border_radius=2)
+				pct = self.active_production["timer"] / self.active_production["max_duration"]
+				pygame.draw.rect(surface, (255, 165, 0), (bx, by, int(bar_w * pct), bar_h), border_radius= 2)
+
 class Resource:
 	def __init__(self, world_x, world_y, resource_type):
 		super(Resource, self).__init__()
@@ -260,7 +302,7 @@ def generate_all_biomes_at_start():
 				if abs(x - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(y - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
 					continue
 
-				spawn_roll = random.randint(1, 100)
+				spawn_roll = random.randint(0, 100)
 				if biome_idx == 0:
 					if spawn_roll <= 4: # 4% chance to spawn
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
@@ -624,6 +666,8 @@ def process_console_cheat_command(command_text):
 # MAIN ENGINE LOOP
 while True:
 	mouse_x, mouse_y = pygame.mouse.get_pos()
+	for struct in active_structures:
+		struct.update()
 
 	hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect = draw_hud_and_inventories(screen)
 
@@ -687,10 +731,32 @@ while True:
 
 					for entry in craft_panel_rects:
 						if entry["rect"].collidepoint(mouse_x,mouse_y) and entry["valid"]:
+
 							rcp = entry["recipe"]
-							deduct_crafting_resources(rcp["ingredients"])
-							res_meta = ITEM_REGISTRY[rcp["result"]]
-							add_item_to_inventory(rcp["result"], res_meta["color"], 1)
+							if "duration" in rcp:
+								target_station = None	
+								p_cx = player_world_x + (player_width // 2)
+								p_cy = player_world_y + (player_height // 2)
+
+								for struct in active_structures:
+									if struct.type == rcp["station"] and struct.active_production is None:
+										dist = math.hypot(p_cx - struct.rect.centerx, p_cy - struct.rect.centery)
+										if dist <= harvest_range:
+											target_station = struct
+											break
+								if target_station is not None:
+									deduct_crafting_resources(rcp["ingredients"])
+									target_station.active_production = {
+										"result": rcp["result"],
+										"timer": 0,
+										"max_duration": rcp["duration"]
+									}
+								else:
+									print("[SYSTEM] no available processin station nearby!")
+							else:
+								deduct_crafting_resources(rcp["ingredients"])
+								res_meta = ITEM_REGISTRY[rcp["result"]]
+								add_item_to_inventory(rcp["result"], res_meta["color"], 1)
 							break
 
 				if is_armor_click:
