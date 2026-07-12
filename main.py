@@ -51,6 +51,36 @@ XP_REWARDS = {
 	"enemy": 60
 }
 
+respawn_queue = []
+
+RESOURCE_SPAWN_CONFIG =  {
+	"tree": {
+		"respawn_time": 1200,
+		"spawn_chance": 0.85,  
+		"max_per_biome": 40
+	},
+	"rock": {
+		"respawn_time": 1800,
+		"spawn_chance": 0.70,
+		"max_per_biome": 25
+	},
+	"copper_ore": {
+		"respawn_time": 2400,
+		"spawn_chance": 0.45,
+		"max_per_biome": 15
+	},
+	"iron_ore": {
+		"respawn_time": 3000,
+		"spawn_chance": 0.35,
+		"max_per_biome": 10
+	},
+	"solarite_ore": {
+		"respawn_time": 4500,
+		"spawn_chance": 0.15, 
+		"max_per_biome": 4
+	}
+}
+
 ITEM_REGISTRY = {
 	"Wood": {"color": (139, 69, 19), "is_structure":False, "structure_type": None },
 	"Stone": {"color": (128, 128, 128), "is_structure": False, "structure_type": None},
@@ -698,7 +728,45 @@ def process_console_cheat_command(command_text):
 	else:
 		print("[CONSOLE CHEAT] Unknown command. Try: 'heal', 'xp 500', or 'give wood 50'")
 
+def process_resource_respawns():
+	global active_resources, world_blueprints
 
+	for item in list(respawn_queue):
+		item["timer"] -= 1
+
+		if item["timer"] <= 0:
+			res_type = item["type"]
+			target_biome = item["biome_index"]
+			config = RESOURCE_SPAWN_CONFIG[res_type]
+
+			current_count = sum(1 for bp in world_blueprints[target_biome] if bp["type"] == res_type)
+			if current_count < config["max_per_biome"]:
+				if random.random() <= config["spawn_chance"]:
+					valid_spot = False
+					attempts = 0
+
+					while not valid_spot and attemps < 30:
+						attempts += 1
+						rx = (random.randint(50, WORLD_WIDTH - 100) // TILE_SIZE) * TILE_SIZE
+						ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
+
+						if abs(rx - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(ry - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
+							continue
+
+						test_rect = pygame.Rect(rx, ry, TILE_SIZE, TILE_SIZE)
+						player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+
+						overlap = any(test_rect.colliderect(s.rect) for s in active_structures)
+						if target_biome == current_biome_index:
+							overlap = overlap or any(test_rect.colliderect(r.rect) for r in active_resources)
+						else:
+							overlap = overlap or any(bp["x"] == rx and bp["y"] == ry for bp in world_blueprints[target_biome])
+						if not overlap and not test_rect.colliderect(player_rect):
+							valid_spot = True
+							world_blueprints[target_biome].append({"x": rx, "y": ry, "type": res_type})
+							if target_biome == current_biome_index:
+								active_resources.append(Resource(rx, ry, res_type))
+			respawn_queue.remove(item)
 # MAIN ENGINE LOOP
 while True:
 	mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -939,6 +1007,13 @@ while True:
 				add_item_to_inventory(active_harvest_target.item_yield, active_harvest_target.color)
 				if active_harvest_target.type in XP_REWARDS:
 					process_xp_gain(XP_REWARDS[active_harvest_target.type])
+				if active_harvest_target.type in RESOURCE_SPAWN_CONFIG:
+					respawn_queue.append({
+							"biome_index": current_biome_index,
+							"type": active_harvest_target.type,
+							"timer": RESOURCE_SPAWN_CONFIG[active_harvest_target.type]["respawn_time"]
+						})
+
 				blueprint_list = world_blueprints[current_biome_index]
 				for bp in blueprint_list:
 					if bp["x"] == active_harvest_target.rect.x and bp["y"] == active_harvest_target.rect.y:
@@ -1117,6 +1192,7 @@ while True:
 	for mob in active_mobs:
 		mob.draw(screen, camera_x, camera_y)
 
+	process_resource_respawns()
 	player_screen_x = player_world_x - camera_x
 	player_screen_y = player_world_y - camera_y
 
