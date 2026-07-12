@@ -226,27 +226,63 @@ class CowNPC:
 		self.move_timer = 0
 		self.dx = 0
 		self.dy = 0
-		self.speed = 1 * TILE_SCALE
+		self.base_speed = 1 * TILE_SCALE
+		self.panic_speed = 3.5 * TILE_SCALE
 		self.damage_timer = 0
+		self.panic_timer = 0
+
 	def update(self):
 		if self.damage_timer > 0:
 			self.damage_timer -=1
+		if self.panic_timer > 0:
+			self.panic_timer -=1
+			current_speed = self.panic_speed
+		else:
+			current_speed = self.base_speed
+
 
 		self.move_timer += 1
 		if self.move_timer >= 120:
 			self.move_timer = 0
 			if random.randint(1, 100) <= 60:
-				self.dx = random.choice([-self.speed, 0, self.speed])
-				self.dy = random.choice([-self.speed, 0, self.speed])
+				self.dx = random.choice([-1, 0, 1]) * current_speed
+				self.dy = random.choice([-1, 0, 1]) * current_speed
 			else:
 				self.dx, self.dy = 0,0
-		self.rect.x += self.dx
-		self.rect.y += self.dy
+		# self.rect.x += self.dx
+		# self.rect.y += self.dy
+
+		if self.dx != 0:
+			self.rect.x += self.dx
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if self.dx > 0:
+						self.rect.right = obj.rect.left
+					if self.dx < 0:
+						self.rect.left = obj.rect.right
+		if self.dy != 0:
+			self.rect.y += self.dy
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if self.dy > 0:
+						self.rect.bottom = obj.rect.top
+					if self.dy < 0:
+						self.rect.top = obj.rect.bottom
 
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
 		if self.rect.y < 0: self.rect.y = 0
 		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def start_panic(self, player_x, player_y):
+		self.panic_timer = 150
+		cow_center_x = self.rect.centerx
+		cow_center_y = self.rect.centery
+		away_angle = math.atan2(cow_center_y - player_y, cow_center_x - player_x)
+
+		angle_offset = random.uniform(-0.2, 0.2)
+		self.dx = math.cos(away_angle + angle_offset) * self.panic_speed
+		self.dy = math.sin(away_angle + angle_offset) * self.panic_speed
 
 	def draw(self, surface, camera_x, camera_y):
 		screen_x = self.rect.x - camera_x
@@ -863,9 +899,9 @@ while True:
 						base_attack_damage = 7
 					mob.health -= base_attack_damage
 					mob.damage_timer = 20
-					mob.rect.x += math.cos(swing_angle) * 24
-					mob.rect.y += math.sin(swing_angle) * 24
-
+					# mob.rect.x += math.cos(swing_angle) * 24
+					# mob.rect.y += math.sin(swing_angle) * 24
+					mob.start_panic(player_world_x, player_world_y)
 					if mob.health <= 0:
 						add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
 						process_xp_gain(XP_REWARDS["cow"])
