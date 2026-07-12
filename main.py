@@ -54,31 +54,22 @@ XP_REWARDS = {
 respawn_queue = []
 
 RESOURCE_SPAWN_CONFIG =  {
-	"tree": {
-		"respawn_time": 1200,
-		"spawn_chance": 0.85,  
-		"max_per_biome": 40
+	0: {
+		"tree": {"respawn_time": 1200,"spawn_chance": 0.85,  "max_per_biome": 40},
+		"rock": {"respawn_time": 1800,"spawn_chance": 0.70,	"max_per_biome": 25},
+		"copper_ore": {"respawn_time": 2400,"spawn_chance": 0.45,"max_per_biome": 15},
+		"iron_ore": {"respawn_time": 3000,"spawn_chance": 0.35,"max_per_biome": 10},
+		"solarite_ore": {"respawn_time": 4500,"spawn_chance": 0.15, "max_per_biome": 4}
 	},
-	"rock": {
-		"respawn_time": 1800,
-		"spawn_chance": 0.70,
-		"max_per_biome": 25
-	},
-	"copper_ore": {
-		"respawn_time": 2400,
-		"spawn_chance": 0.45,
-		"max_per_biome": 15
-	},
-	"iron_ore": {
-		"respawn_time": 3000,
-		"spawn_chance": 0.35,
-		"max_per_biome": 10
-	},
-	"solarite_ore": {
-		"respawn_time": 4500,
-		"spawn_chance": 0.15, 
-		"max_per_biome": 4
+
+	1: {
+		"tree": {"respawn_time": 3600, "spawn_chance": 0.15, "max_per_biome": 3},
+	    "rock": {"respawn_time": 1800, "spawn_chance": 0.30, "max_per_biome": 10},
+	    "copper_ore": {"respawn_time": 2400, "spawn_chance": 0.55, "max_per_biome": 20},
+	    "iron_ore": {"respawn_time": 3000, "spawn_chance": 0.45, "max_per_biome": 15},
+	    "solarite_ore": {"respawn_time": 4500, "spawn_chance": 0.20, "max_per_biome": 5}
 	}
+	
 }
 
 ITEM_REGISTRY = {
@@ -370,19 +361,19 @@ def generate_all_biomes_at_start():
 
 				spawn_roll = random.randint(0, 100)
 				if biome_idx == 0:
-					if spawn_roll <= 4: # 4% chance to spawn
+					if spawn_roll <= 20: # 4% chance to spawn
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
-					elif spawn_roll <=6: # 2% chance to spawn
+					if spawn_roll <= 3: # 2% chance to spawn
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
 
 				elif biome_idx == 1:
 					if spawn_roll <= 1: # Trees are exceptionally rare
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
-					elif spawn_roll <= 4: # 3% Copper chance
+					if spawn_roll <= 4: # 3% Copper chance
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "copper_ore"})
-					elif spawn_roll <= 6: # 2% Iron chance
+					if spawn_roll <= 6: # 2% Iron chance
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "iron_ore"})
-					elif spawn_roll <= 7:
+					if spawn_roll <= 7:
 						world_blueprints[biome_idx].append({"x": x, "y":y, "type": "solarite_ore"})
 def load_current_biome_objects():
 	active_resources.clear()
@@ -737,7 +728,7 @@ def process_resource_respawns():
 		if item["timer"] <= 0:
 			res_type = item["type"]
 			target_biome = item["biome_index"]
-			config = RESOURCE_SPAWN_CONFIG[res_type]
+			config = RESOURCE_SPAWN_CONFIG[target_biome][res_type]
 
 			current_count = sum(1 for bp in world_blueprints[target_biome] if bp["type"] == res_type)
 			if current_count < config["max_per_biome"]:
