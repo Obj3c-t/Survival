@@ -18,8 +18,8 @@ BASE_TILE_SIZE = 32
 
 TILE_SIZE = BASE_TILE_SIZE * TILE_SCALE
 
-WORLD_WIDTH = SCREEN_WIDTH * 4
-WORLD_HEIGHT = SCREEN_HEIGHT * 4
+WORLD_WIDTH = SCREEN_WIDTH * 12
+WORLD_HEIGHT = SCREEN_HEIGHT * 12
 
 screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT))
 
@@ -358,23 +358,30 @@ def generate_all_biomes_at_start():
 			for x in range(0, WORLD_WIDTH, TILE_SIZE):
 				if abs(x - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(y - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
 					continue
-
-				spawn_roll = random.randint(0, 100)
+				tile_occupied = False
+				# spawn_roll = random.randint(0, 100)
 				if biome_idx == 0:
-					if spawn_roll <= 20: # 4% chance to spawn
+					if random.randint(0, 100) <= 10: # 4% chance to spawn
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
-					if spawn_roll <= 3: # 2% chance to spawn
+						tile_occupied = True
+
+					if not tile_occupied and random.randint(0, 100) <= 3: # 2% chance to spawn
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
+						tile_occupied = True
 
 				elif biome_idx == 1:
-					if spawn_roll <= 1: # Trees are exceptionally rare
+					if random.randint(0, 100) <= 1: # Trees are exceptionally rare
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
-					if spawn_roll <= 4: # 3% Copper chance
+						tile_occupied = True
+					if not tile_occupied and random.randint(0, 100) <= 3: # 3% Copper chance
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "copper_ore"})
-					if spawn_roll <= 6: # 2% Iron chance
+						tile_occupied = True
+					if not tile_occupied and random.randint(0, 100) <= 3: # 2% Iron chance
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "iron_ore"})
-					if spawn_roll <= 7:
+						tile_occupied = True
+					if not tile_occupied and random.randint(0, 100) <= 1:
 						world_blueprints[biome_idx].append({"x": x, "y":y, "type": "solarite_ore"})
+						tile_occupied = True
 def load_current_biome_objects():
 	active_resources.clear()
 	active_structures.clear()
@@ -476,6 +483,27 @@ def draw_hud_and_inventories(surface):
 	pygame.draw.rect(surface, (240, 50, 50), (hp_x + 2, hp_y + 2, int((hp_bar_w - 4) * hp_pct), hp_bar_h - 4), border_radius=2)
 	hp_txt = ui_font.render(f"HP: {player_current_health}/{player_max_health}", True, (255,255,255))
 	surface.blit(hp_txt, (hp_x + 5, hp_y + 1))
+
+	p_cx = player_world_x + (player_width // 2)
+	p_cy = player_world_y + (player_height // 2)
+	wb_count = 0
+	for struct in active_structures:
+		if struct.type == "workbench":
+			wb_count += 1
+			wb_cx = struct.rect.centerx
+			wb_cy = struct.rect.centery
+			dist = int(math.hypot(wb_cx - p_cx, wb_cy - p_cy) // TILE_SIZE)
+			s_wb_x = wb_cx - camera_x
+			s_wb_y = wb_cy - camera_y
+
+			if s_wb_x < 20 or s_wb_x > SCREEN_WIDTH - 20 or s_wb_y < 20 or s_wb_y > SCREEN_HEIGHT - 20:
+				angle = math.atan2(wb_cy - p_cy, wb_cx - p_cx)
+				edge_x = max(40, min(SCREEN_WIDTH - 40, int(SCREEN_WIDTH // 2 + math.cos(angle) * (SCREEN_WIDTH // 2 - 50))))
+				edge_y = max(60, min(SCREEN_HEIGHT - 60, int(SCREEN_HEIGHT // 2 + math.sin(angle) * (SCREEN_HEIGHT // 2 - 80))))
+				pygame.draw.circle(surface, (30,30,30), (edge_x, edge_y), 18)
+				pygame.draw.circle(surface, (160, 110, 60), (edge_x, edge_y), 18, 2)
+				track_lbl = ui_font.render(f"BASE {wb_count} ({dist}m)", True, (255, 235, 180))
+				surface.blit(track_lbl, (edge_x - track_lbl.get_width() // 2, edge_y + 20 if edge_y < SCREEN_HEIGHT - 100 else edge_y - 32))
 
 	if active_harvest_target is not None and pygame.mouse.get_pressed()[0]:
 		bar_w, bar_h = 200, 20
@@ -736,7 +764,7 @@ def process_resource_respawns():
 					valid_spot = False
 					attempts = 0
 
-					while not valid_spot and attemps < 30:
+					while not valid_spot and attempts < 30:
 						attempts += 1
 						rx = (random.randint(50, WORLD_WIDTH - 100) // TILE_SIZE) * TILE_SIZE
 						ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
@@ -998,16 +1026,18 @@ while True:
 				add_item_to_inventory(active_harvest_target.item_yield, active_harvest_target.color)
 				if active_harvest_target.type in XP_REWARDS:
 					process_xp_gain(XP_REWARDS[active_harvest_target.type])
-				if active_harvest_target.type in RESOURCE_SPAWN_CONFIG:
+				if active_harvest_target.type in RESOURCE_SPAWN_CONFIG[current_biome_index]:
 					respawn_queue.append({
 							"biome_index": current_biome_index,
 							"type": active_harvest_target.type,
-							"timer": RESOURCE_SPAWN_CONFIG[active_harvest_target.type]["respawn_time"]
+							"timer": RESOURCE_SPAWN_CONFIG[current_biome_index][active_harvest_target.type]["respawn_time"]
 						})
 
 				blueprint_list = world_blueprints[current_biome_index]
 				for bp in blueprint_list:
-					if bp["x"] == active_harvest_target.rect.x and bp["y"] == active_harvest_target.rect.y:
+					if (bp["x"] == active_harvest_target.rect.x and
+						 bp["y"] == active_harvest_target.rect.y and
+						 bp["type"] == active_harvest_target.type):
 						blueprint_list.remove(bp)
 						break
 
