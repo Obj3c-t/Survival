@@ -977,13 +977,23 @@ while True:
 		for mob in list(active_mobs):
 			if attack_hitbox.colliderect(mob.rect):
 				if swing_timer == 1:
-					base_attack_damage = 5
-					if active_hand_item == "Wooden Sword":
-						base_attack_damage = 10
-					if active_hand_item == "Stone Sword":
-						base_attack_damage = 20
-					if active_hand_item == "Stone Pickaxe":
-						base_attack_damage = 7
+					DAMAGE_TABLE = {
+						"Fists": 3,
+						"Wooden Sword": 5,
+						"Stone Sword": 8,
+						"Stone Pickaxe": 4,
+						"Copper Sword": 11,
+						"Iron Sword": 15,
+						"Solarite Sword": 19
+					}
+					# base_attack_damage = 5
+					# if active_hand_item == "Wooden Sword":
+					# 	base_attack_damage = 10
+					# if active_hand_item == "Stone Sword":
+					# 	base_attack_damage = 20
+					# if active_hand_item == "Stone Pickaxe":
+					# 	base_attack_damage = 7
+					base_attack_damage = DAMAGE_TABLE.get(active_hand_item, 3)
 					mob.health -= base_attack_damage
 					mob.damage_timer = 20
 					# mob.rect.x += math.cos(swing_angle) * 24
@@ -1008,19 +1018,25 @@ while True:
 				harvest_progress = 0
 
 			active_hand_item = inventory_slots[selected_hotbar_slot]["item"]
-			harvest_speed = 1
+			harvest_speed = 0
 
-			if active_hand_item == "Stone Pickaxe":
-				if active_harvest_target.type == "rock":
-					harvest_speed = 5
-				elif active_harvest_target.type in ["copper_ore", "iron_ore"]:
+			if active_harvest_target.type == "tree":
+				harvest_speed = 3 if active_hand_item == "Stone Pickaxe" else 1
+			elif active_harvest_target.type == "rock":
+				harvest_speed = 5 if active_hand_item == "Stone Pickaxe" else 1
+			elif active_harvest_target.type in "copper_ore":
+				if active_hand_item == "Stone Pickaxe":
 					harvest_speed = 3
-				elif active_harvest_target.type == "tree":
-					harvest_speed = 2
-				elif active_harvest_target.type == "solarite_ore":
-					harvest_speed = 2
-
-			harvest_progress += harvest_speed
+			elif active_harvest_target.type == "iron_ore":
+				if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe", "Solarite Pickaxe"]:
+					harvest_speed = 4
+				else:
+					pass
+			elif active_harvest_target.type == "solarite_ore":
+				if active_hand_item in ["Iron Pickaxe", "Solarite Pickaxe"]:
+					harvest_speed = 5
+			if harvest_speed > 0:
+				harvest_progress += harvest_speed
 
 			if harvest_progress >= active_harvest_target.max_health:
 				add_item_to_inventory(active_harvest_target.item_yield, active_harvest_target.color)
