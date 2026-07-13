@@ -111,6 +111,18 @@ ITEM_REGISTRY = {
 		"color": (255, 90, 0), "is_structure": False, "structure_type": None,
 		"swing_duration": 12, "arc_range": math.pi * 0.95, "blade_length": 85, "trail_color": (255, 180, 100, 240)
 	},
+	"Copper Pickaxe": {
+		"color": (212, 115, 71), "is_structure": False, "structure_type": None,
+		"swing_duration": 18, "arc_range": math.pi * 0.55, "blade_length": 55, "trail_color": (230, 150, 100, 160)
+	},
+	"Iron Pickaxe": {
+		"color": (210, 210, 210), "is_structure": False, "structure_type": None,
+		"swing_duration": 16, "arc_range": math.pi * 0.6, "blade_length": 60, "trail_color": (240, 240, 255, 180)
+	},
+	"Solarite Pickaxe": {
+		"color": (255, 69, 0), "is_structure": False, "structure_type": None,
+		"swing_duration": 14, "arc_range": math.pi * 0.65, "blade_length": 65, "trail_color": (255, 150, 50, 200)
+	},
 	"Workbench": {"color": (160, 110, 60), "is_structure": True, "structure_type": "workbench"},
 	"Coal Kiln": {"color": (40,40,45), "is_structure": True, "structure_type": "coal_kiln"},
 	"Furnace": {"color": (80, 80, 80), "is_structure": True, "structure_type": "furnace"},
@@ -133,7 +145,10 @@ RECIPES = [
 	{"result": "Solarite Bar", "ingredients": {"Solarite Ore": 3, "Coal": 2}, "station": "furnace", "duration": 420},
 	{"result": "Copper Sword", "ingredients": {"Wood": 2, "Copper Bar": 5}, "station": "anvil"},
 	{"result": "Iron Sword", "ingredients": {"Wood": 2, "Iron Bar": 5}, "station": "anvil"},
-	{"result": "Solarite Sword", "ingredients": {"Wood": 2, "Solarite Bar": 6}, "station": "anvil"}
+	{"result": "Solarite Sword", "ingredients": {"Wood": 2, "Solarite Bar": 6}, "station": "anvil"},
+	{"result": "Copper Pickaxe", "ingredients": {"Wood": 4, "Copper Bar": 4}, "station": "anvil"},
+	{"result": "Iron Pickaxe", "ingredients": {"Wood": 4, "Iron Bar": 4}, "station": "anvil"},
+	{"result": "Solarite Pickaxe", "ingredients": {"Wood": 4, "Solarite Bar": 5}, "station": "anvil"},
 ]
 
 # player_inventory = {
