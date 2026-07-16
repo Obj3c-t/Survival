@@ -1036,20 +1036,24 @@ while True:
 			harvest_speed = 0
 
 			if active_harvest_target.type == "tree":
-				harvest_speed = 3 if active_hand_item == "Stone Pickaxe" else 1
+				harvest_speed = 4 if active_hand_item == ["Stone Pickaxe", "Copper Pickaxe", "Iron Pickaxe"] else 6 if active_hand_item == "Solarite Pickaxe" else 1
 			elif active_harvest_target.type == "rock":
-				harvest_speed = 5 if active_hand_item == "Stone Pickaxe" else 1
+				harvest_speed = 5 if active_hand_item == "Stone Pickaxe" else 5 if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"] else 7 if active_hand_item == "Solarite Pickaxe" else 1
 			elif active_harvest_target.type in "copper_ore":
-				if active_hand_item == "Stone Pickaxe":
-					harvest_speed = 3
-			elif active_harvest_target.type == "iron_ore":
-				if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe", "Solarite Pickaxe"]:
+				if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"]:
 					harvest_speed = 4
-				else:
-					pass
+				elif  active_hand_item == "Solarite Pickaxe":
+					harvest_speed = 7
+			elif active_harvest_target.type == "iron_ore":
+				if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"]:
+					harvest_speed = 4
+				elif  active_hand_item == "Solarite Pickaxe":
+					harvest_speed = 6
 			elif active_harvest_target.type == "solarite_ore":
-				if active_hand_item in ["Iron Pickaxe", "Solarite Pickaxe"]:
-					harvest_speed = 5
+				if active_hand_item == "Iron Pickaxe":
+					harvest_speed = 1
+				elif active_hand_item == "Solarite Pickaxe":
+					harvest_speed = 3
 			if harvest_speed > 0:
 				harvest_progress += harvest_speed
 
