@@ -369,34 +369,87 @@ def generate_all_biomes_at_start():
 	world_blueprints.clear()
 	for biome_idx in range(len(biomes)):
 		world_blueprints[biome_idx] = []
+		occupied_positions = set()
 		for y in range(0, WORLD_HEIGHT, TILE_SIZE):
 			for x in range(0, WORLD_WIDTH, TILE_SIZE):
 				if abs(x - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(y - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
 					continue
-				tile_occupied = False
+				if (x, y) in occupied_positions:
+					continue
+
+				
 				# spawn_roll = random.randint(0, 100)
 				if biome_idx == 0:
 					if random.randint(0, 100) <= 10: # 4% chance to spawn
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
-						tile_occupied = True
+						occupied_positions.add((x, y))
 
-					if not tile_occupied and random.randint(0, 100) <= 3: # 2% chance to spawn
+
+					elif random.randint(0, 100) <= 3: # 2% chance to spawn
 						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
-						tile_occupied = True
+						occupied_positions.add((x,y))
 
 				elif biome_idx == 1:
-					if random.randint(0, 100) <= 1: # Trees are exceptionally rare
-						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
-						tile_occupied = True
-					if not tile_occupied and random.randint(0, 100) <= 3: # 3% Copper chance
-						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "copper_ore"})
-						tile_occupied = True
-					if not tile_occupied and random.randint(0, 100) <= 3: # 2% Iron chance
-						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "iron_ore"})
-						tile_occupied = True
-					if not tile_occupied and random.randint(0, 100) <= 1:
-						world_blueprints[biome_idx].append({"x": x, "y":y, "type": "solarite_ore"})
-						tile_occupied = True
+					height_pct = y / WORLD_HEIGHT
+
+					chosen_ore = None
+					spawn_chance = 0
+
+					if height_pct < 0.35:
+						if random.random() < 0.015:
+							world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
+							occupied_positions.add((x,y))
+							continue
+						elif random.random() < 0.03:
+							chosen_ore = "copper_ore"
+							spawn_chance = 0.04
+
+					elif height_pct < 0.75:
+						if random.random() < 0.02:
+							world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
+							occupied_positions.add((x,y))
+							continue
+						elif random.random() < 0.04:
+							chosen_ore = "iron_ore"
+							spawn_chance = 0.03
+					else:
+						if random.random() < 0.02:
+							chosen_ore = "solarite_ore"
+							spawn_chance = 0.015
+
+					if chosen_ore and random.random() < spawn_chance:
+						cluster_size = random.randint(2, 5)
+						current_vein_count = 0
+
+						queue = [(x,y)]
+
+						while queue and current_vein_count < cluster_size:
+							cx, cy = queue.pop(0)
+							if (cx, cy) not in occupied_positions and 0 <= cx < WORLD_WIDTH and 0 <= cy < WORLD_HEIGHT:
+								world_blueprints[biome_idx].append({"x": cx, "y": cy, "type": chosen_ore})
+								occupied_positions.add((cx, cy))
+								current_vein_count += 1
+
+								neighbors = [
+									(cx + TILE_SIZE, cy),
+									(cx - TILE_SIZE, cy),
+									(cx, cy + TILE_SIZE),
+									(cx, cy - TILE_SIZE)
+								]
+								random.shuffle(neighbors)
+								queue.extend(neighbors)
+					# if random.randint(0, 100) <= 1: # Trees are exceptionally rare
+					# 	world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
+					# 	tile_occupied = True
+					# if not tile_occupied and random.randint(0, 100) <= 3: # 3% Copper chance
+					# 	world_blueprints[biome_idx].append({"x": x, "y": y, "type": "copper_ore"})
+					# 	tile_occupied = True
+					# if not tile_occupied and random.randint(0, 100) <= 3: # 2% Iron chance
+					# 	world_blueprints[biome_idx].append({"x": x, "y": y, "type": "iron_ore"})
+					# 	tile_occupied = True
+					# if not tile_occupied and random.randint(0, 100) <= 1:
+					# 	world_blueprints[biome_idx].append({"x": x, "y":y, "type": "solarite_ore"})
+					# 	tile_occupied = True
 def load_current_biome_objects():
 	active_resources.clear()
 	active_structures.clear()
@@ -782,7 +835,24 @@ def process_resource_respawns():
 					while not valid_spot and attempts < 30:
 						attempts += 1
 						rx = (random.randint(50, WORLD_WIDTH - 100) // TILE_SIZE) * TILE_SIZE
-						ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
+						# ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
+						if target_biome == 1:
+							if res_type == "copper_ore":
+								min_y = 50
+								max_y = int(WORLD_HEIGHT * 0.35)
+							elif res_type == "iron_ore":
+								min_y = int(WORLD_HEIGHT * 0.35)
+								max_y = int(WORLD_HEIGHT * 0.75)
+							elif res_type == "solarite_ore":
+								min_y = int(WORLD_HEIGHT * 0.75)
+								max_y = WORLD_HEIGHT - 100
+							elif res_type == "rock" or "test_rect":
+								min_y = 50
+								max_y = WORLD_HEIGHT - 100
+
+							ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
+						elif target_biome == 0:
+							ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
 
 						if abs(rx - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(ry - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
 							continue
