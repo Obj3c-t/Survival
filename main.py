@@ -47,7 +47,10 @@ XP_REWARDS = {
 	"rock": 35,
 	"copper_ore": 50,
 	"iron_ore": 75,
+	"solarite_ore": 90,
 	"cow": 30,
+	"scorpion": 60,
+	"beetle": 45,
 	"enemy": 60
 }
 
@@ -89,11 +92,11 @@ ITEM_REGISTRY = {
 	},
 	"Wooden Sword": {
 		"color": (170, 110, 50), "is_structure": False, "structure_type": None,
-		"swing_duration": 14, "arc_range": math.pi * 0.7, "blade_length": 55, "trail_color": (210, 180, 140, 180)
+		"swing_duration": 10, "arc_range": math.pi * 0.7, "blade_length": 55, "trail_color": (210, 180, 140, 180) # Wood is fast (duration 10)
 	},
 	"Stone Sword": {
 		"color": (150, 150, 150), "is_structure": False, "structure_type": None,
-		"swing_duration": 18, "arc_range": math.pi * 0.8, "blade_length": 65, "trail_color": (180, 180, 180, 200)
+		"swing_duration": 20, "arc_range": math.pi * 0.95, "blade_length": 65, "trail_color": (180, 180, 180, 200) # Stone is slow (20) & wide sweep (0.95)
 	},
 	"Stone Pickaxe": {
 		"color": (190, 190, 190), "is_structure": False, "structure_type": None,
@@ -101,15 +104,15 @@ ITEM_REGISTRY = {
 	},
 	"Copper Sword": {
 		"color": (195, 105, 60), "is_structure": False, "structure_type": None,
-		"swing_duration": 16, "arc_range": math.pi * 0.8, "blade_length": 75, "trail_color": (230, 150, 100, 200)
+		"swing_duration": 14, "arc_range": math.pi * 0.8, "blade_length": 75, "trail_color": (230, 150, 100, 200) # Copper recovery is quick (14), has crit chance
 	},
 	"Iron Sword": {
 		"color": (220, 220, 225), "is_structure": False, "structure_type": None,
-		"swing_duration": 15, "arc_range": math.pi * 0.85, "blade_length": 75, "trail_color": (240, 240, 255, 220)
+		"swing_duration": 15, "arc_range": math.pi * 0.85, "blade_length": 75, "trail_color": (240, 240, 255, 220) # Balanced, reliable, high knockback
 	},
 	"Solarite Sword": {
 		"color": (255, 90, 0), "is_structure": False, "structure_type": None,
-		"swing_duration": 12, "arc_range": math.pi * 0.95, "blade_length": 85, "trail_color": (255, 180, 100, 240)
+		"swing_duration": 12, "arc_range": math.pi * 0.95, "blade_length": 85, "trail_color": (255, 180, 100, 240) # Burns enemies, lights up tiles
 	},
 	"Copper Pickaxe": {
 		"color": (212, 115, 71), "is_structure": False, "structure_type": None,
@@ -266,8 +269,28 @@ class CowNPC:
 		self.panic_speed = 3.5 * TILE_SCALE
 		self.damage_timer = 0
 		self.panic_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.is_hostile = False
 
 	def update(self):
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
 		if self.damage_timer > 0:
 			self.damage_timer -=1
 		if self.panic_timer > 0:
@@ -335,12 +358,234 @@ class CowNPC:
 				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 				red_mask.fill((255, 0, 0, 140))
 				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
 			surface.blit(mob_surf, (screen_x, screen_y))
 			if self.health < self.max_health:
 				bar_w = TILE_SIZE
 				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
 				pct = max(0.0, self.health / self.max_health)
 				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+class ScorpionNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (190, 80, 50)
+		self.health = 140
+		self.max_health = 140
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.state = "idle"
+		self.state_timer = 0
+		self.speed = 2.5 * TILE_SCALE
+		self.charge_dx = 0
+		self.charge_dy = 0
+		self.is_hostile = True
+		self.attack_power = 15
+	def update(self):
+		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -=3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
+
+		self.state_timer += 1
+		if self.state == "idle":
+			if dist < 350 and self.state_timer > 60:
+				self.state = "windup"
+				self.state_timer = 0
+			else:
+				if self.state_timer > 120:
+					self.state_timer = 0
+					self.charge_dx = random.choice([-1, 0, 1]) * 1.0
+					self.charge_dy= random.choice([-1, 0, 1]) * 1.0
+				self.rect.x += self.charge_dx
+				self.rect.y += self.charge_dy
+		elif self.state == "windup":
+			self.rect.x += random.choice([-2, 2])
+			if self.state_timer > 40:
+				self.state = "charge"
+				self.state_timer = 0
+				angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+				self.charge_dx = math.cos(angle) * (self.speed * 2)
+				self.charge_dy = math.sin(angle) * (self.speed * 2)
+		elif self.state == "charge":
+			self.rect.x += self.charge_dx
+			self.rect.y += self.charge_dy
+			if self.state_timer > 30:
+				self.state = "idle"
+				self.state_timer = 0
+		for obj in active_resources + active_structures:
+			if self.rect.colliderect(obj.rect):
+				self.state = "idle"
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			has_protection = armor_slot["item"] == "Leather Armor"
+			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			player_current_health -= real_dmg
+			player_damage_timer = 30
+			hit_pause_frames(3)
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			base_col = (255, 165, 0) if (self.state == "windup" and pygame.time.get_ticks() % 100 < 50) else self.color
+			pygame.draw.rect(mob_surf, base_col, (0, 0, TILE_SIZE, TILE_SIZE), border_radius=6)
+			pygame.draw.rect(mob_surf, (100, 30, 30), (TILE_SIZE // 2 - 6, -6, 12, 12), border_radius=3)
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50, 50, 50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+class BeetleNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (60,90, 130)
+		self.health = 190
+		self.max_health = 190
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.orbit_angle = random.uniform(0, math.pi * 2)
+		self.state = "orbit"
+		self.state_timer = 0
+		self.speed = 1.8 * TILE_SCALE
+		self.is_hostile = True
+		self.attack_power = 10
+
+	def update(self):
+		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -=1
+				self.burn_ticks -=1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
+
+		self.state_timer += 1
+		if self.state == "orbit":
+			if dist < 400:
+				self.orbit_angle += 0.03
+				target_x = px + math.cos(self.orbit_angle) * 150
+				target_y = py + math.sin(self.orbit_angle) * 150
+				self.rect.x += (target_x - self.rect.x) * 0.05
+				self.rect.y += (target_y - self.rect.y) * 0.05
+				if self.state_timer > 150:
+					self.state = "leap"
+					self.state_timer = 0
+			else:
+				angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+				self.rect.x += math.cos(angle) * self.speed
+				self.rect.y += math.sin(angle) * self.speed
+		elif self.state == "leap":
+			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+			self.rect.x += math.cos(angle) * (self.speed * 3.5)
+			self.rect.y += math.sin(angle) * (self.speed * 3.5)
+			if self.state_timer > 25:
+				self.state = "orbit"
+				self.state_timer = 0
+
+		for obj in active_resources + active_structures:
+			if self.rect.colliderect(obj.rect):
+				self.state = "orbit"
+
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			has_protection = armor_slot["item"] == "Leather Armor"
+			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			player_current_health -= real_dmg
+			player_damage_timer = 30
+			hit_pause_frames(3)
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			pygame.draw.rect(mob_surf, self.color, (0,0,TILE_SIZE, TILE_SIZE), border_radius=8)
+			pygame.draw.rect(mob_surf,(30, 45, 70), (4, 4, TILE_SIZE - 8, TILE_SIZE - 8), border_radius=4)
+			pygame.draw.line(mob_surf, (15, 20, 35), (TILE_SIZE // 2, 4), (TILE_SIZE // 2, TILE_SIZE - 4), 2)
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 0 ,0, 140))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50, 50, 50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y -10, int(bar_w * pct), 6))
+
+		
 
 # PLAYER INIT
 player_width = 24 * TILE_SCALE
@@ -356,7 +601,15 @@ player_max_health = 100
 player_current_health = 100
 player_damage_timer = 0
 desert_damage_timer = 0
+game_time = 0.0
+DAY_DURATION = 14400
 
+TIME_COLORS = [
+	(240, 150, 100),
+	(255, 255, 255),
+	(120, 60, 110),
+	(15, 15, 35)
+]
 is_swinging = False
 swing_timer = 0
 swing_duration = 12
@@ -364,6 +617,12 @@ swing_angle = 0
 
 entity_respawn_timer = 0
 MAX_COWS_IN_FOREST = 6
+MAX_HOSTILE_ENEMIES_IN_DESERT = 8
+
+def hit_pause_frames(frames_count):
+	pause_clock = pygame.time.Clock()
+	for _ in range(frames_count):
+		pause_clock.tick(60)
 
 def generate_all_biomes_at_start(): 
 	world_blueprints.clear()
@@ -466,6 +725,13 @@ def load_current_biome_objects():
 			cx = random.randint(100, WORLD_WIDTH - 100)
 			cy = random.randint(100,WORLD_HEIGHT - 100)
 			active_mobs.append(CowNPC(cx,cy))
+
+	elif current_biome_index == 1:
+		for _ in range(3):
+			active_mobs.append(ScorpionNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
+		for _ in range(3):
+			active_mobs.append(BeetleNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
+
 # core world setup
 generate_all_biomes_at_start()
 load_current_biome_objects()
@@ -1079,14 +1345,38 @@ while True:
 					# if active_hand_item == "Stone Pickaxe":
 					# 	base_attack_damage = 7
 					base_attack_damage = DAMAGE_TABLE.get(active_hand_item, 3)
+					is_critical_hit = False
+					if active_hand_item == "Copper Sword":
+						if random.random() <= 0.20:
+							base_attack_damage *= 2
+							is_critical_hit = True
+
 					mob.health -= base_attack_damage
 					mob.damage_timer = 20
 					# mob.rect.x += math.cos(swing_angle) * 24
 					# mob.rect.y += math.sin(swing_angle) * 24
-					mob.start_panic(player_world_x, player_world_y)
+					kb_strength = 32 if active_hand_item == "Iron Sword" else 18
+					mob.knockback_dx = math.cos(swing_angle) * kb_strength
+					mob.knockback_dy = math.sin(swing_angle) * kb_strength
+					if active_hand_item == "Solarite Sword":
+						mob.burn_ticks = 4
+						mob.burn_timer = 0
+
+					if is_critical_hit:
+						hit_pause_frames(6)
+					else:
+						hit_pause_frames(3)
+					if not mob.is_hostile:
+						mob.start_panic(player_world_x, player_world_y)
+					
 					if mob.health <= 0:
-						add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
-						process_xp_gain(XP_REWARDS["cow"])
+						if mob.is_hostile:
+							add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
+							m_type = "scorpion" if isinstance(mob, ScorpionNPC) else "beetle"
+							process_xp_gain(XP_REWARDS[m_type])
+						else:
+							add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
+							process_xp_gain(XP_REWARDS["cow"])
 						active_mobs.remove(mob)
 
 
@@ -1275,7 +1565,18 @@ while True:
 				ry = random.choice(possible_y) if possible_y else random.randint(50, WORLD_HEIGHT - 50)
 
 				active_mobs.append(CowNPC(rx, ry))
-
+	elif current_biome_index == 1:
+		if len(active_mobs) < MAX_HOSTILE_ENEMIES_IN_DESERT:
+			entity_respawn_timer += 1
+			if entity_respawn_timer >= 450:
+				entity_respawn_timer = 0
+				rx = random.randint(50, WORLD_WIDTH - 50)
+				ry = random.randint(50, WORLD_HEIGHT - 50)
+				if math.hypot(rx - player_world_x, ry - player_world_y) > 400:
+					if random.random() < 0.5:
+						active_mobs.append(ScorpionNPC(rx, ry))
+					else:
+						active_mobs.append(BeetleNPC(rx, ry))
 	else:
 		entity_respawn_timer = 0
 
@@ -1297,6 +1598,14 @@ while True:
 		desert_damage_timer = 0
 		if player_current_health < player_max_health:
 			player_current_health += 0.05
+
+	if player_current_health <= 0:
+		player_world_x = WORLD_WIDTH // 2
+		player_world_y = WORLD_HEIGHT // 2
+		current_biome_index = 0
+		load_current_biome_objects()
+		player_current_health = player_max_health
+		desert_damage_timer = 0
 
 	# CAMERA OFFSET CALCULATIONS
 	camera_x = player_world_x - (SCREEN_WIDTH // 2) + (player_width // 2)
@@ -1383,7 +1692,14 @@ while True:
 				
 				
 				screen.blit(trail_surf, (0, 0))
-
+	active_hand_item = inventory_slots[selected_hotbar_slot]["item"]
+	if active_hand_item == "Solarite Sword":
+		light_mask = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA	)
+		# light_mask.fill((0,0,0,45))
+		p_center_x = int(player_screen_x + player_width // 2)
+		p_center_y = int(player_screen_y + player_height // 2)
+		pygame.draw.circle(light_mask, (45, 25, 5 ,0), (p_center_x, p_center_y), 160)
+		screen.blit(light_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
 	if is_console_open:
 		# Translucent black overlay bar across the top
 		console_surf = pygame.Surface((SCREEN_WIDTH, 40), pygame.SRCALPHA)
@@ -1395,6 +1711,45 @@ while True:
 		console_render = hud_font.render(cheat_display_string, True, (0, 255, 150))
 		screen.blit(console_render, (20, 10))
 	draw_hud_and_inventories(screen)
+	game_time = (game_time + 1) % DAY_DURATION
+	time_pct = game_time / DAY_DURATION
+
+	if time_pct < 0.25:
+		blend_pct = (time_pct - 0.0) / 0.25
+		c1, c2 = TIME_COLORS[0], TIME_COLORS[1]
+		current_ambient_alpha = int(80 * (1 - blend_pct))
+	elif time_pct < 0.50:
+		blend_pct = (time_pct - 0.25) / 0.25
+		c1, c2 = TIME_COLORS[1], TIME_COLORS[2]
+		current_ambient_alpha = int(120 * blend_pct)
+	elif time_pct < 0.75:
+		blend_pct = (time_pct - 0.50) / 0.25
+		c1, c2 = TIME_COLORS[2], TIME_COLORS[3]
+		current_ambient_alpha = int(120 + (95 * blend_pct))
+	else:
+		blend_pct = (time_pct - 0.75) / 0.25
+		c1, c2 = TIME_COLORS[3], TIME_COLORS[0]
+		current_ambient_alpha = int(215 * (1 - blend_pct))
+
+	r = int(c1[0] + (c2[0] - c1[0]) * blend_pct)
+	g = int(c1[1] + (c2[1] - c1[1]) * blend_pct)
+	b = int(c1[2] + (c2[2] - c1[2]) * blend_pct)
+
+	ambient_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+
+	if time_pct >= 0.50 or time_pct < 0.10:
+		ambient_overlay.fill((r, g, b, current_ambient_alpha))
+
+		p_center_x = int(player_screen_x + player_width // 2)
+		p_center_y = int(player_screen_y + player_height // 2)
+		base_light_radius = 90
+		if active_hand_item == "Solarite Sword":
+			base_light_radius = 240
+
+		for radius in range(base_light_radius, 0, -15):
+			alpha_reduction = int(current_ambient_alpha * (1 - (radius / base_light_radius)))
+			pygame.draw.circle(ambient_overlay, (r, g, b, alpha_reduction), (p_center_x, p_center_y), radius)
+		screen.blit(ambient_overlay, (0,0))
 	pygame.display.flip()
 	clock.tick(60)
 
