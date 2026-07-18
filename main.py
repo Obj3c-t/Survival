@@ -413,6 +413,8 @@ class ScorpionNPC:
 		dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
 
 		self.state_timer += 1
+		dx = 0
+		dy = 0
 		if self.state == "idle":
 			if dist < 350 and self.state_timer > 60:
 				self.state = "windup"
@@ -422,10 +424,12 @@ class ScorpionNPC:
 					self.state_timer = 0
 					self.charge_dx = random.choice([-1, 0, 1]) * 1.0
 					self.charge_dy= random.choice([-1, 0, 1]) * 1.0
-				self.rect.x += self.charge_dx
-				self.rect.y += self.charge_dy
+				# self.rect.x += self.charge_dx
+				# self.rect.y += self.charge_dy
+				dx = self.charge_dx
+				dy = self.charge_dy
 		elif self.state == "windup":
-			self.rect.x += random.choice([-2, 2])
+			dx = random.choice([-2, 2])
 			if self.state_timer > 40:
 				self.state = "charge"
 				self.state_timer = 0
@@ -433,14 +437,30 @@ class ScorpionNPC:
 				self.charge_dx = math.cos(angle) * (self.speed * 2)
 				self.charge_dy = math.sin(angle) * (self.speed * 2)
 		elif self.state == "charge":
-			self.rect.x += self.charge_dx
-			self.rect.y += self.charge_dy
+			dx = self.charge_dx
+			dy = self.charge_dy
 			if self.state_timer > 30:
 				self.state = "idle"
 				self.state_timer = 0
 		for obj in active_resources + active_structures:
 			if self.rect.colliderect(obj.rect):
 				self.state = "idle"
+
+		if dx != 0:
+			self.rect.x += dx
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dx > 0: self.rect.right = obj.rect.left
+					if dx < 0: self.rect.left = obj.rect.right
+					self.state = "idle" 
+		if dy != 0:
+			self.rect.y += dy
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dy > 0: self.rect.bottom = obj.rect.top
+					if dy < 0: self.rect.top = obj.rect.bottom
+					self.state = "idle"
+
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
@@ -522,27 +542,46 @@ class BeetleNPC:
 		dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
 
 		self.state_timer += 1
+
+		dx = 0
+		dy = 0
 		if self.state == "orbit":
 			if dist < 400:
 				self.orbit_angle += 0.03
 				target_x = px + math.cos(self.orbit_angle) * 150
 				target_y = py + math.sin(self.orbit_angle) * 150
-				self.rect.x += (target_x - self.rect.x) * 0.05
-				self.rect.y += (target_y - self.rect.y) * 0.05
+				dx = (target_x - self.rect.x) * 0.05
+				dy = (target_y - self.rect.y) * 0.05
 				if self.state_timer > 150:
 					self.state = "leap"
 					self.state_timer = 0
 			else:
 				angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
-				self.rect.x += math.cos(angle) * self.speed
-				self.rect.y += math.sin(angle) * self.speed
+				dx = math.cos(angle) * self.speed
+				dy = math.sin(angle) * self.speed
 		elif self.state == "leap":
 			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
-			self.rect.x += math.cos(angle) * (self.speed * 3.5)
-			self.rect.y += math.sin(angle) * (self.speed * 3.5)
+			dx = math.cos(angle) * (self.speed * 3.5)
+			dy =  math.sin(angle) * (self.speed * 3.5)
 			if self.state_timer > 25:
 				self.state = "orbit"
 				self.state_timer = 0
+
+		if dx != 0:
+			self.rect.x += dx
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dx > 0: self.rect.right = obj.rect.left
+					if dx < 0: self.rect.left = obj.rect.right
+					self.state = "orbit"
+
+		if dx != 0:
+			self.rect.y += dy
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dy > 0: self.rect.bottom = obj.rect.top
+					if dy < 0: self.rect.top = obj.rect.bottom
+					self.state = "orbit"
 
 		for obj in active_resources + active_structures:
 			if self.rect.colliderect(obj.rect):
@@ -588,6 +627,7 @@ class BeetleNPC:
 		
 
 # PLAYER INIT
+player_heal_cooldown = 0
 player_width = 24 * TILE_SCALE
 player_height = 24 * TILE_SCALE
 player_world_x = WORLD_WIDTH // 2
@@ -617,7 +657,7 @@ swing_angle = 0
 
 entity_respawn_timer = 0
 MAX_COWS_IN_FOREST = 6
-MAX_HOSTILE_ENEMIES_IN_DESERT = 8
+MAX_HOSTILE_ENEMIES_IN_DESERT = 15
 
 def hit_pause_frames(frames_count):
 	pause_clock = pygame.time.Clock()
@@ -1528,6 +1568,9 @@ while True:
 
 	if player_damage_timer > 0:
 		player_damage_timer -= 1
+		player_heal_cooldown = 240
+	elif player_heal_cooldown > 0:
+		player_heal_cooldown -=1
 
 	for mob in active_mobs:
 		mob.update()
@@ -1566,12 +1609,29 @@ while True:
 
 				active_mobs.append(CowNPC(rx, ry))
 	elif current_biome_index == 1:
+		depth_pct = player_world_y / WORLD_HEIGHT
+		if depth_pct < 0.35:
+			current_max_hostiles = 2
+			timer_tick_rate = 0.5
+		elif depth_pct < 0.75:
+			current_max_hostiles = 6
+			timer_tick_rate = 1.0
+		else:
+			current_max_hostiles = MAX_HOSTILE_ENEMIES_IN_DESERT
+			timer_tick_rate = 2.0
+
 		if len(active_mobs) < MAX_HOSTILE_ENEMIES_IN_DESERT:
-			entity_respawn_timer += 1
+			entity_respawn_timer += timer_tick_rate
 			if entity_respawn_timer >= 450:
 				entity_respawn_timer = 0
+				if depth_pct < 0.35:
+					ry = random.randint(50, int(WORLD_HEIGHT * 0.35))
+				elif depth_pct < 0.75:
+					ry = random.randint(int(WORLD_HEIGHT * 0.35), int(WORLD_HEIGHT * 0.75))
+				else:
+					ry = random.randint(50, WORLD_HEIGHT - 50)
 				rx = random.randint(50, WORLD_WIDTH - 50)
-				ry = random.randint(50, WORLD_HEIGHT - 50)
+				
 				if math.hypot(rx - player_world_x, ry - player_world_y) > 400:
 					if random.random() < 0.5:
 						active_mobs.append(ScorpionNPC(rx, ry))
@@ -1596,8 +1656,11 @@ while True:
 					player_current_health = player_max_health
 	else:
 		desert_damage_timer = 0
+	is_taking_heat_damage = (current_biome_index == 1 and armor_slot["item"] != "Leather Armor")
+	if player_heal_cooldown <= 0 and not is_taking_heat_damage:
 		if player_current_health < player_max_health:
-			player_current_health += 0.05
+			player_current_health = min(player_max_health, player_current_health + 0.1)
+
 
 	if player_current_health <= 0:
 		player_world_x = WORLD_WIDTH // 2
