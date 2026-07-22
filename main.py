@@ -23,7 +23,7 @@ WORLD_HEIGHT = SCREEN_HEIGHT * 12
 
 screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT))
 
-pygame.display.set_caption("2D SURVIVAL - PHASE 1")
+pygame.display.set_caption("FORGEBOUND")
 
 clock = pygame.time.Clock()
 
@@ -51,7 +51,10 @@ XP_REWARDS = {
 	"cow": 30,
 	"scorpion": 60,
 	"beetle": 45,
-	"enemy": 60
+	"enemy": 60,
+	"zombie": 40,
+	"skeleton": 55,
+	"slime": 25
 }
 
 respawn_queue = []
@@ -86,6 +89,12 @@ ITEM_REGISTRY = {
 	"Solarite Bar": {"color": (255, 69, 0), "is_structure": False, "structure_type": None},
 	"Leather": {"color": (150, 90, 50), "is_structure": False, "structure_type": None},
 	"Leather Armor": {"color": (100, 65, 35), "is_structure": False, "structure_type": None},
+	"Bone": {"color": (230, 225, 210), "is_structure": False, "structure_type": None},
+	"Slime Gel": {"color": (80, 210, 120), "is_structure": False, "structure_type": None},
+	"Wooden Wall": {"color": (110, 70, 40), "is_structure": True, "structure_type": "wall_wood"},
+	"Stone Wall": {"color": (100, 100, 105), "is_structure": True, "structure_type": "wall_stone"},
+	"Wooden Door": {"color": (150, 100, 50), "is_structure": True, "structure_type": "door_wood"},
+	"Bed": {"color": (200, 50, 50), "is_structure": True, "structure_type": "bed"},
 	"Fists": {
 		"color": (240,240,240), "is_structure": False, "structure_type": None,
 		"swing_duration": 10, "arc_range": math.pi / 2, "blade_length":35, "trail_color": (200,220,255,150)
@@ -130,7 +139,8 @@ ITEM_REGISTRY = {
 	"Coal Kiln": {"color": (40,40,45), "is_structure": True, "structure_type": "coal_kiln"},
 	"Furnace": {"color": (80, 80, 80), "is_structure": True, "structure_type": "furnace"},
 	"Anvil": {"color": (50, 50, 55), "is_structure": True, "structure_type": "anvil"},
-	"Coal": {"color": (20,20,20), "is_structure": False, "structure_type": None}
+	"Coal": {"color": (20,20,20), "is_structure": False, "structure_type": None},
+	"Chest": {"color": (139, 90, 43), "is_structure": True, "structure_type": "chest"}
 }
 
 RECIPES = [
@@ -139,9 +149,10 @@ RECIPES = [
 	{"result": "Furnace", "ingredients": {"Stone": 25, "Wood": 5}, "station": "coal_kiln"},
 	{"result": "Anvil", "ingredients": {"Iron Bar": 5}, "station": "workbench"},
 	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
-	{"result": "Leather Armor", "ingredients": {"Leather": 15}, "station": "workbench"},
+	{"result": "Leather Armor", "ingredients": {"Leather": 10}, "station": "workbench"},
 	{"result": "Wooden Sword", "ingredients": {"Wood": 6}, "station": None},
 	{"result": "Stone Sword", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
+	{"result": "Chest", "ingredients": {"Wood": 15}, "station": "workbench"},
 	{"result": "Coal", "ingredients": {"Wood": 2}, "station": "coal_kiln", "duration": 180},
 	{"result": "Copper Bar", "ingredients": {"Copper Ore": 3, "Coal": 1}, "station": "furnace", "duration": 240},
 	{"result": "Iron Bar", "ingredients": {"Iron Ore": 3, "Coal": 1}, "station": "furnace", "duration": 300},
@@ -183,6 +194,7 @@ is_console_open = False
 console_input_text = ""
 dragged_item = None
 drag_source_slot = None
+active_open_chest = None
 
 # GAME OBJECTS &  MAIN CLASSES
 class PlacedStructure:
@@ -191,13 +203,20 @@ class PlacedStructure:
 		self.type = struct_type
 		self.color = color
 		self.active_production = None
+		self.output_item = None
+		self.output_count = 0
+		if self.type == "chest":
+			self.chest_inventory = {i: {"item": None, "count": 0, "color": None} for i in range(16)}
+
 	def update(self):
 		if self.active_production is not None:
 			self.active_production["timer"] += 1
 			if self.active_production["timer"] >= self.active_production["max_duration"]:
-				res_item = self.active_production["result"]
-				res_meta = ITEM_REGISTRY[res_item]
-				add_item_to_inventory(res_item, res_meta["color"], 1)
+				# res_item = self.active_production["result"]
+				# res_meta = ITEM_REGISTRY[res_item]
+				# add_item_to_inventory(res_item, res_meta["color"], 1)
+				self.output_item = self.active_production["result"]
+				self.output_count +=1
 				self.active_production = None
 
 	def draw(self, surface, camera_x, camera_y):
@@ -206,6 +225,7 @@ class PlacedStructure:
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
 			pygame.draw.rect(surface, self.color,(screen_x,screen_y,TILE_SIZE, TILE_SIZE), border_radius=4)
 			pygame.draw.rect(surface, (255,255,255), (screen_x,screen_y,TILE_SIZE,TILE_SIZE), 2, border_radius=4)
+			clean_label = self.type.replace("_", "").upper()
 			lbl_surf = ui_font.render(self.type.upper(), True, (255, 255, 255))
 			surface.blit(lbl_surf, (screen_x + (TILE_SIZE // 2) - (lbl_surf.get_width() // 2), screen_y - 18))
 
@@ -217,6 +237,10 @@ class PlacedStructure:
 				pygame.draw.rect(surface, (30,30,30), (bx, by, bar_w, bar_h), border_radius=2)
 				pct = self.active_production["timer"] / self.active_production["max_duration"]
 				pygame.draw.rect(surface, (255, 165, 0), (bx, by, int(bar_w * pct), bar_h), border_radius= 2)
+			if self.output_item is not None:
+				out_meta = ITEM_REGISTRY[self.output_item]
+				pygame.draw.rect(surface, out_meta["color"], (screen_x + TILE_SIZE//2 - 10, screen_y + TILE_SIZE//2 - 10, 20, 20), border_radius=3)
+				pygame.draw.rect(surface, (255, 255, 255), (screen_x + TILE_SIZE//2 - 10, screen_y + TILE_SIZE//2 - 10, 20, 20), 1, border_radius=3)
 
 class Resource:
 	def __init__(self, world_x, world_y, resource_type):
@@ -624,7 +648,320 @@ class BeetleNPC:
 				pct = max(0.0, self.health / self.max_health)
 				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y -10, int(bar_w * pct), 6))
 
-		
+class ZombieNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (52, 98, 63)
+		self.health = 80
+		self.max_health = 80
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.speed = 1.0 * TILE_SCALE
+		self.is_hostile = True
+		self.attack_power = 8
+
+	def update(self):
+		global player_world_x, player_world_y, player_current_health, player_damage_timer, time_pct
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) < 0.1:
+			self.rect.y += int(self.knockback_dy)
+			self.knockback_dy *= 0.8
+
+		is_day = (0.10<= time_pct < 0.50)
+		if is_day:
+			self.burn_ticks = max(self.burn_ticks,1)
+			self.health -= 1.0
+			self.damage_timer = 5
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+		dx = math.cos(angle) * self.speed
+		dy = math.sin(angle) * self.speed
+
+		if dx != 0:
+			self.rect.x += dx
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dx > 0: self.rect.right = obj.rect.left
+					if dx < 0: self.rect.left = obj.rect.right
+		if dy != 0:
+			self.rect.y += dy
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dy > 0: self.rect.bottom = obj.rect.top
+					if dy < 0: self.rect.top = obj.rect.bottom
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height,)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			has_protection = armor_slot["item"] == "Leather Armor"
+			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			player_current_health -= real_dmg
+			player_damage_timer = 30
+			hit_pause_frames(3)
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			if self.damage_timer > 0:
+				shake_offset = math.sin(self.damage_timer * 5) * 8
+				screen_x += shake_offset
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			pygame.draw.rect(mob_surf, self.color, (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
+			pygame.draw.rect(mob_surf, (180, 20, 20), (6, 8, 8, 6), border_radius=1)
+			pygame.draw.rect(mob_surf, (180, 20, 20), (22, 8, 8, 6), border_radius=1)
+
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0 ,120))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+class SkeletonNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (210, 208, 195)
+		self.health = 60
+		self.max_health = 60
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.speed = 1.4 * TILE_SCALE
+		self.is_hostile = True
+		self.attack_power = 12
+
+	def update(self):
+		global player_world_x, player_world_y, player_current_health, player_damage_timer, time_pct
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy)
+			self.knockback_dy*= 0.8
+
+		is_day = (0.10 <= time_pct < 0.50)
+		if is_day:
+			self.burn_ticks = max(self.burn_ticks, 1)
+			self.health -= 1.0
+			self.damage_timer = 5
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.max_health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+
+		angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+		dx = math.cos(angle) * self.speed 
+		dy = math.sin(angle) * self.speed
+
+		if dx != 0:
+			self.rect.x += dx
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dx > 0: self.rect.right = obj.rect.left
+					if dx < 0: self.rect.left = obj.rect.right
+
+		if dy != 0:
+			self.rect.y += dy
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if dy > 0: self.rect.bottom = obj.rect.top
+					if dy < 0: self.rect.top = obj.rect.bottom
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			has_protection = armor_slot["item"] == "Leather Armor"
+			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			player_current_health -= real_dmg
+			player_damage_timer = 30
+			hit_pause_frames(3)
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <+ SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			if self.damage_timer > 0:
+				shake_offset = math.sin(self.damage_timer * 5) * 8
+				screen_x += shake_offset
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=6)
+			pygame.draw.line(mob_surf, (50,50,50), (6, 12), (TILE_SIZE - 6, 12), 2)
+			pygame.draw.line(mob_surf, (50,50,50), (6, 20), (TILE_SIZE - 6, 20), 2)
+			pygame.draw.line(mob_surf, (50,50,50), (6, 28), (TILE_SIZE - 6, 28), 2)
+
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+class SlimeNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (0,180,120,200)
+		self.health = 40
+		self.max_health = 40
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.hop_timer = random.randint(0,30)
+		self.dx = 0
+		self.dy = 0
+		self.speed = 1.1 * TILE_SCALE
+		self.is_hostile = True
+		self.attack_power = 6
+
+	def update(self):
+		global player_world_x, player_world_y, player_current_health, player_damage_timer, time_pct
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.x += int(self.knockback_dy)
+			self.knockback_dy *= 0.8
+
+		is_day = (0.10 <= time_pct < 0.50)
+		if is_day:
+			self.health -= 1
+			self.damage_timer = 5
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+
+		self.hop_timer += 1
+		if self.hop_timer >= 50:
+			self.hop_timer = 0
+			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+			self.dx = math.cos(angle) * (self.speed * 3.5)
+			self.dy = math.sin(angle) * (self.speed * 3.5)
+		else:
+			self.dx *= 0.85
+			self.dy *= 0.85
+
+		if self.dx != 0:
+			self.rect.x = self.dx
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if self.dx > 0: self.rect.right = obj.rect.left
+					if self.dx < 0: self.rect.left = obj.rect.right
+		if self.dy != 0:
+			self.rect.y = self.dy
+			for obj in active_resources + active_structures:
+				if self.rect.colliderect(obj.rect):
+					if self.dy > 0: self.rect.bottom = obj.rect.top
+					if self.dy < 0: self.rect.top = obj.rect.bottom
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			has_protection = armor_slot["item"] == "Leather Armor"
+			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			player_current_health -= real_dmg
+			player_damage_timer = 30
+			hit_pause_frames(3)
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			if self.damage_timer > 0:
+				shake_offset = math.sin(self.damage_timer * 5) * 8
+				screen_x += shake_offset
+				mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=12)
+				pygame.draw.circle(mob_surf, (255, 255, 255, 180), (12, TILE_SIZE - 12), 4)
+				if self.damage_timer > 0:
+					red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+					red_mask.fill((255, 0, 0, 140))
+					mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+				if self.burn_ticks > 0:
+					burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+					burn_mask.fill((255, 140, 0, 120))
+					mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+				surface.blit(mob_surf, (screen_x, screen_y))
+				if self.health < self.max_health:
+					bar_w = TILE_SIZE
+					pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+					pct = max(0.0, self.health / self.max_health)
+					pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+
+
+
 
 # PLAYER INIT
 player_heal_cooldown = 0
@@ -641,7 +978,8 @@ player_max_health = 100
 player_current_health = 100
 player_damage_timer = 0
 desert_damage_timer = 0
-game_time = 0.0
+game_time = 0
+time_pct = 0
 DAY_DURATION = 14400
 
 TIME_COLORS = [
@@ -656,8 +994,10 @@ swing_duration = 12
 swing_angle = 0
 
 entity_respawn_timer = 0
-MAX_COWS_IN_FOREST = 6
+MAX_COWS_IN_FOREST = 20
 MAX_HOSTILE_ENEMIES_IN_DESERT = 15
+night_spawn_timer = 0
+
 
 def hit_pause_frames(frames_count):
 	pause_clock = pygame.time.Clock()
@@ -749,6 +1089,23 @@ def generate_all_biomes_at_start():
 					# if not tile_occupied and random.randint(0, 100) <= 1:
 					# 	world_blueprints[biome_idx].append({"x": x, "y":y, "type": "solarite_ore"})
 					# 	tile_occupied = True
+
+def save_structures_state():
+	structure_blueprints[current_biome_index] = []
+	for s in active_structures:
+		state = {
+			"x": s.rect.x,
+			"y": s.rect.y,
+			"type": s.type,
+			"color": s.color,
+			"output_item": s.output_item,
+			"output_count": s.output_count,
+			"active_production": s.active_production
+		}
+		if s.type == "chest":
+			state["chest_inventory"] = {k: v.copy() for k, v in s.chest_inventory.items()}
+		structure_blueprints[current_biome_index].append(state)
+
 def load_current_biome_objects():
 	active_resources.clear()
 	active_structures.clear()
@@ -758,7 +1115,13 @@ def load_current_biome_objects():
 		active_resources.append(Resource(data["x"], data["y"], data["type"]))
 
 	for s_data in structure_blueprints[current_biome_index]:
-		active_structures.append(PlacedStructure(s_data["x"], s_data["y"], s_data["type"], s_data["color"]))
+		struct = PlacedStructure(s_data["x"], s_data["y"], s_data["type"], s_data["color"])
+		if "output_item" in s_data: struct.output_item = s_data["output_item"]
+		if "output_count" in s_data: struct.output_count = s_data["output_count"]
+		if "active_production" in s_data: struct.active_production = s_data["active_production"]
+		if s_data["type"] == "chest" and "chest_inventory" in s_data:
+			struct.chest_inventory = {k: v.copy() for k, v in s_data["chest_inventory"].items()}
+		active_structures.append(struct)
 
 	if current_biome_index == 0:
 		for _ in range(5):
@@ -920,6 +1283,8 @@ def draw_hud_and_inventories(surface):
 	craft_panel_rects = []
 	armor_slot_rect = pygame.Rect(0,0,0,0)
 	trash_slot_rect = pygame.Rect(0,0,0,0)
+	chest_grid_rects = {}
+
 
 	if is_inventory_open:
 		inv_w = (slot_size * 5) + (padding * 6) + 120
@@ -935,7 +1300,7 @@ def draw_hud_and_inventories(surface):
 
 		slot_start_idx = 4
 		for row in range(4):
-			for col in range(5):
+			for col in range(4):
 				idx = slot_start_idx + (row * 5) + col
 				sx = inv_x + padding + (col * (slot_size + padding))
 				sy = inv_y + 40 + padding + (row * (slot_size + padding))
@@ -976,44 +1341,78 @@ def draw_hud_and_inventories(surface):
 		surface.blit(ts_lbl, (tsx + (slot_size//2) - ts_lbl.get_width()//2, tsy - 18))
 		if trash_slot_rect.collidepoint(mouse_pos):
 			hovered_item_name = "Trash Bin (Click with item to remove)"
+		if active_open_chest is not None:
+			chest_w = (slot_size * 4) + (padding * 5) + 40
+			chest_h = (slot_size * 4) + (padding * 5) + 60
+			chest_x = inv_x - chest_w - 20
+			chest_y = inv_y
+			pygame.draw.rect(surface, (40, 30, 20), (chest_x, chest_y, chest_w, chest_h), border_radius=10)
+			pygame.draw.rect(surface, (160, 110, 60), (chest_x, chest_y, chest_w, chest_h), 2, border_radius=10)
+			chest_title = hud_font.render("Chest Storage", True, (240, 220, 180))
+			surface.blit(chest_title, (chest_x + padding + 5, chest_y + 12))
+
+			for row in range(4):
+				for col in range(4):
+
+					idx = row * 4 + col
+					sx = chest_x + padding + 20 + (col *(slot_size + padding))
+					sy = chest_y + 40 + padding + (row * (slot_size + padding))
+					slot_rect = pygame.Rect(sx, sy, slot_size, slot_size)
+					chest_grid_rects[idx] = slot_rect
+
+					pygame.draw.rect(surface, (20, 15, 10), slot_rect, border_radius=5)
+					pygame.draw.rect(surface, (80, 55, 30), slot_rect, 1, border_radius=5)
+
+					slot_data = active_open_chest.chest_inventory[idx]
+					if slot_data["item"] is not None and drag_source_slot != ("chest", idx):
+						pygame.draw.rect(surface, slot_data["color"], (sx + 8, sy+8, slot_size - 16, slot_size - 16),border_radius=3)
+						cnt_txt = ui_font.render(str(slot_data["count"]), True, (255, 255, 255))
+						surface.blit(cnt_txt, (sx + slot_size - cnt_txt.get_width() - 5, sy + slot_size - cnt_txt.get_height() - 3))
+					if slot_rect.collidepoint(mouse_pos):
+						hovered_item_name = slot_data["item"]
+
+
+
+		
+		active_stations = scan_nearby_crafting_stations()
+		visible_recipes = [r for r in RECIPES if r["station"] is None or r["station"] in active_stations]
 
 		craft_x = inv_x + inv_w + 20
 		craft_w = 280
-		craft_h = 45 + (len(RECIPES) * 38) + 15
+		craft_h = 45 + (len(visible_recipes) * 38) + 15
 		pygame.draw.rect(surface, (30,30,30,240), (craft_x, inv_y, craft_w, craft_h), border_radius = 10)
 		pygame.draw.rect(surface, (100,100,100), (craft_x, inv_y, craft_w, craft_h), 2, border_radius=10)
 		c_title = hud_font.render("Crafting", True, (0, 200, 255))
 		surface.blit(c_title, (craft_x + 15, inv_y + 12))
-
 		current_inv_counts = get_total_inventory_counts()
-		active_stations = scan_nearby_crafting_stations()
+
 
 		entry_y = inv_y + 45
-		for recipe in RECIPES:
-			station_match = recipe["station"] is None or recipe["station"] in active_stations
+		for recipe in visible_recipes:
+			# station_match = recipe["station"] is None or recipe["station"] in active_stations
 			has_mats = all(current_inv_counts.get(item, 0) >= amt for item, amt in recipe["ingredients"].items())
 
-			if station_match:
-				item_lbl = f"{recipe['result']}"
-				text_color = (255,255,255) if has_mats else (100,100,100)
+			# if station_match:
+			item_lbl = f"{recipe['result']}"
+			text_color = (255,255,255) if has_mats else (100,100,100)
 
-				row_rect = pygame.Rect(craft_x + 10, entry_y, craft_w - 20, 32)
-				craft_panel_rects.append({"rect": row_rect, "recipe": recipe, "valid": has_mats})
+			row_rect = pygame.Rect(craft_x + 10, entry_y, craft_w - 20, 32)
+			craft_panel_rects.append({"rect": row_rect, "recipe": recipe, "valid": has_mats})
 
-				bg_row = (45,45,45) if has_mats else (20,20,20)
-				pygame.draw.rect(surface, bg_row, row_rect, border_radius=4)
+			bg_row = (45,45,45) if has_mats else (20,20,20)
+			pygame.draw.rect(surface, bg_row, row_rect, border_radius=4)
 
-				meta = ITEM_REGISTRY[recipe["result"]]
-				pygame.draw.rect(surface, meta["color"], (craft_x + 15, entry_y+8, 16, 16), border_radius = 2)
+			meta = ITEM_REGISTRY[recipe["result"]]
+			pygame.draw.rect(surface, meta["color"], (craft_x + 15, entry_y+8, 16, 16), border_radius = 2)
 
-				lbl_surface = ui_font.render(item_lbl, True, text_color)
-				surface.blit(lbl_surface, (craft_x + 40, entry_y + 8))
+			lbl_surface = ui_font.render(item_lbl, True, text_color)
+			surface.blit(lbl_surface, (craft_x + 40, entry_y + 8))
 
-				req_strings = [f"{amt} {it[:3]}" for it, amt in recipe["ingredients"].items()]
-				req_surface = ui_font.render(", ".join(req_strings), True, (160,160,160) if has_mats else (140,70,70))
-				surface.blit(req_surface, (craft_x + craft_w - req_surface.get_width() - 15, entry_y + 8))
+			req_strings = [f"{amt} {it[:3]}" for it, amt in recipe["ingredients"].items()]
+			req_surface = ui_font.render(", ".join(req_strings), True, (160,160,160) if has_mats else (140,70,70))
+			surface.blit(req_surface, (craft_x + craft_w - req_surface.get_width() - 15, entry_y + 8))
 
-				entry_y += 38
+			entry_y += 38
 
 	if dragged_item is not None:
 		ds = 36
@@ -1035,7 +1434,7 @@ def draw_hud_and_inventories(surface):
 		pygame.draw.rect(surface, (20, 20 ,20, 240), (tx, ty, tip_w, tip_h), border_radius=4)
 		pygame.draw.rect(surface, (100, 100, 100), (tx, ty, tip_w, tip_h), 1, border_radius=4)
 		surface.blit(tip_txt, (tx + 6, ty + 4))
-	return hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect
+	return hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect, chest_grid_rects
 
 
 
@@ -1179,11 +1578,13 @@ def process_resource_respawns():
 			respawn_queue.remove(item)
 # MAIN ENGINE LOOP
 while True:
+	game_time = (game_time + 1) % DAY_DURATION
+	time_pct = game_time / DAY_DURATION
 	mouse_x, mouse_y = pygame.mouse.get_pos()
 	for struct in active_structures:
 		struct.update()
 
-	hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect = draw_hud_and_inventories(screen)
+	hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect, chest_grid_rects = draw_hud_and_inventories(screen)
 
 	# EVENT PROCESSING
 	for event in pygame.event.get():
@@ -1210,18 +1611,45 @@ while True:
 				if event.key == pygame.K_e:
 					is_inventory_open = not is_inventory_open
 					if not is_inventory_open and dragged_item is not None:
-						inventory_slots[drag_source_slot] = dragged_item
+						if isinstance(drag_source_slot, int):
+							inventory_slots[drag_source_slot] = dragged_item
+						elif drag_source_slot == "armor":
+							armor_slot = dragged_item
+						elif isinstance(drag_source_slot, tuple) and drag_source_slot[0] == "chest":
+							if active_open_chest is not None:
+								active_open_chest.chest_inventory[drag_source_slot[1]] = dragged_item
 						dragged_item = None
 						drag_source_slot = None
+						active_open_chest = None
 				elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4]:
 					selected_hotbar_slot = event.key - pygame.K_1
 				elif event.key == pygame.K_BACKQUOTE: # The ` key right next to the 1 key
 					is_console_open = True
 					print("\n>>> CHEAT SYSTEM LISTENING: Click your terminal window and type your command, then press Enter! <<<")
 		elif event.type == pygame.MOUSEBUTTONDOWN:
+			if event.button == 1 and not is_inventory_open:
+				click_world_x = mouse_x + camera_x
+				click_world_y = mouse_y + camera_y
+				p_cx = player_world_x + (player_width // 2)
+				p_cy = player_world_y + (player_height // 2)
+				for struct in active_structures:
+					if struct.rect.collidepoint(click_world_x, click_world_y):
+						dist = math.hypot(p_cx - struct.rect.centerx, p_cy - struct.rect.centery)
+						if dist <= harvest_range:
+							if struct.type == "chest":
+								is_inventory_open = True
+								active_open_chest = struct
+								break
+							elif hasattr(struct, "output_item") and struct.output_item is not None:
+								meta = ITEM_REGISTRY[struct.output_item]
+								add_item_to_inventory(struct.output_item, meta["color"], struct.output_count)
+								struct.output_item = None
+								struct.output_count = 0
+								break
 			if event.button == 1:
 				clicked_slot = None
 				is_armor_click = False
+				clicked_chest_slot = None
 
 				for idx, r in hotbar_rects.items():
 					if r.collidepoint(mouse_x, mouse_y):
@@ -1242,6 +1670,12 @@ while True:
 
 					if armor_slot_rect.collidepoint(mouse_x, mouse_y):
 						is_armor_click = True
+
+					if active_open_chest is not None:
+						for idx, r in chest_grid_rects.items():
+							if r.collidepoint(mouse_x, mouse_y):
+								clicked_chest_slot = idx
+								break
 
 					for entry in craft_panel_rects:
 						if entry["rect"].collidepoint(mouse_x,mouse_y) and entry["valid"]:
@@ -1291,6 +1725,24 @@ while True:
 								dragged_item = None
 								drag_source_slot = None
 
+				elif clicked_chest_slot is not None and active_open_chest is not None:
+					if dragged_item is None:
+						if active_open_chest.chest_inventory[clicked_chest_slot]["item"] is not None:
+							dragged_item = active_open_chest.chest_inventory[clicked_chest_slot].copy()
+							drag_source_slot = ("chest", clicked_chest_slot)
+							active_open_chest.chest_inventory[clicked_chest_slot] = {"item": None, "count": 0, "color": None}
+					else:
+						target_slot_data = active_open_chest.chest_inventory[clicked_chest_slot].copy()
+						active_open_chest.chest_inventory[clicked_chest_slot] = dragged_item
+
+						if target_slot_data["item"] is not None:
+							dragged_item = target_slot_data
+							drag_source_slot = ("chest", clicked_chest_slot)
+						else:
+							dragged_item = None
+							drag_source_slot = None
+
+
 				elif clicked_slot is not None:
 					if dragged_item is None:
 						if inventory_slots[clicked_slot]["item"] is not None:
@@ -1308,6 +1760,22 @@ while True:
 							dragged_item = None
 							drag_source_slot = None
 
+	if is_inventory_open and active_open_chest is not None:
+		p_cx = player_world_x + (player_width // 2)
+		p_cy = player_world_y + (player_height // 2)
+		dist = math.hypot(p_cx - active_open_chest.rect.centerx, p_cy - active_open_chest.rect.centery)
+		if dist > harvest_range:
+			is_inventory_open = False
+			if dragged_item is not None:
+				if isinstance(drag_source_slot, int):
+					inventory_slots[drag_source_slot] = dragged_item
+				elif drag_source_slot == "armor":
+					armor_slot = dragged_item
+				elif isinstance(drag_source_slot, tuple) and drag_source_slot[0] == "chest":
+					active_open_chest.chest_inventory[drag_source_slot[1]] = dragged_item
+				dragged_item = None
+				drag_source_slot = None
+			active_open_chest = None
 	mouse_pressed = pygame.mouse.get_pressed()
 	if mouse_pressed[0] and not is_inventory_open and dragged_item is None:
 		click_world_x = mouse_x + camera_x
@@ -1403,17 +1871,29 @@ while True:
 						mob.burn_timer = 0
 
 					if is_critical_hit:
-						hit_pause_frames(6)
+						hit_pause_frames(40)
 					else:
-						hit_pause_frames(3)
+						hit_pause_frames(20)
 					if not mob.is_hostile:
 						mob.start_panic(player_world_x, player_world_y)
 					
 					if mob.health <= 0:
 						if mob.is_hostile:
-							add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
-							m_type = "scorpion" if isinstance(mob, ScorpionNPC) else "beetle"
-							process_xp_gain(XP_REWARDS[m_type])
+							if isinstance(mob, ScorpionNPC):
+								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
+								process_xp_gain(XP_REWARDS["scorpion"])
+							elif isinstance(mob, BeetleNPC):
+								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
+								process_xp_gain(XP_REWARDS["beetle"])
+							elif isinstance(mob, ZombieNPC):
+								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 3))
+								process_xp_gain(XP_REWARDS["zombie"])
+							elif isinstance(mob, SkeletonNPC):
+								add_item_to_inventory("Bone", ITEM_REGISTRY["Bone"]["color"], random.randint(1, 3))
+								process_xp_gain(XP_REWARDS["skeleton"])
+							elif isinstance(mob, SlimeNPC):
+								add_item_to_inventory("Slime Gel", ITEM_REGISTRY["Slime Gel"]["color"], random.randint(2, 4))
+								process_xp_gain(XP_REWARDS["slime"])
 						else:
 							add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
 							process_xp_gain(XP_REWARDS["cow"])
@@ -1553,6 +2033,7 @@ while True:
 	# X AXIS BIOME TRANSITIONS
 	if player_world_x > WORLD_WIDTH - player_width:
 		if current_biome_index +1 < len(biomes):
+			save_structures_state()
 			current_biome_index += 1
 			load_current_biome_objects()
 			player_world_x = 10
@@ -1560,6 +2041,7 @@ while True:
 			player_world_x = WORLD_WIDTH - player_width
 	elif player_world_x < 0:
 		if current_biome_index > 0:
+			save_structures_state()
 			current_biome_index -= 1
 			load_current_biome_objects()
 			player_world_x = WORLD_WIDTH - player_width - 10
@@ -1572,8 +2054,11 @@ while True:
 	elif player_heal_cooldown > 0:
 		player_heal_cooldown -=1
 
-	for mob in active_mobs:
+	for mob in list(active_mobs):
 		mob.update()
+		if mob.health <= 0:
+			if mob in active_mobs:
+				active_mobs.remove(mob)
 
 	if is_swinging:
 		swing_timer += 1
@@ -1608,6 +2093,38 @@ while True:
 				ry = random.choice(possible_y) if possible_y else random.randint(50, WORLD_HEIGHT - 50)
 
 				active_mobs.append(CowNPC(rx, ry))
+
+		is_night = (time_pct >= 0.50 or time_pct < 0.10)
+		if is_night:
+			night_mobs_count = sum(1 for m in active_mobs if isinstance(m, (ZombieNPC, SkeletonNPC, SlimeNPC)))
+			if night_mobs_count < 8:
+				night_spawn_timer += 1
+				if night_spawn_timer >= 180:
+					night_spawn_timer = 0
+					angle = random.uniform(0, math.pi * 2)
+					dist = random.randint(500, 800)
+					rx = player_world_x + int(math.cos(angle) * dist)
+					ry = player_world_y + int(math.sin(angle) * dist)
+
+					if 50 <= rx <= WORLD_WIDTH - 50 and 50 <= ry <= WORLD_HEIGHT - 50:
+						test_rect = pygame.Rect(rx, ry, TILE_SIZE, TILE_SIZE)
+						overlap = any(test_rect.colliderect(s.rect) for s in active_structures)
+						overlap = overlap or any(test_rect.colliderect(r.rect) for r in active_resources)
+
+						in_viewport = (camera_x - 50 <= rx <= camera_x + SCREEN_WIDTH + 50 and camera_y - 50 <= ry <= camera_y + SCREEN_HEIGHT + 50)
+
+						if not overlap and not in_viewport:
+							choice = random.random()
+							if choice < 0.50:
+								active_mobs.append(ZombieNPC(rx, ry))
+							elif choice < 0.80:
+								active_mobs.append(SkeletonNPC(rx, ry))
+							else:
+								active_mobs.append(SlimeNPC(rx, ry))
+		else:
+			night_spawn_timer = 0
+
+
 	elif current_biome_index == 1:
 		depth_pct = player_world_y / WORLD_HEIGHT
 		if depth_pct < 0.35:
@@ -1774,8 +2291,7 @@ while True:
 		console_render = hud_font.render(cheat_display_string, True, (0, 255, 150))
 		screen.blit(console_render, (20, 10))
 	draw_hud_and_inventories(screen)
-	game_time = (game_time + 1) % DAY_DURATION
-	time_pct = game_time / DAY_DURATION
+
 
 	if time_pct < 0.25:
 		blend_pct = (time_pct - 0.0) / 0.25
