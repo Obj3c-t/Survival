@@ -30,11 +30,12 @@ clock = pygame.time.Clock()
 # BIOMES
 biomes = [
 	{"name": "Forest", "grass": (101, 146, 90)},
-	{"name": "Desert", "grass": (225, 191, 117)}
+	{"name": "Desert", "grass": (225, 191, 117)},
+	{"name": "Glacial Tundra","grass": (210, 233, 240)}
 ]
 current_biome_index = 0
 world_blueprints = {}
-structure_blueprints = {0: [], 1: []}
+structure_blueprints = {0: [], 1: [], 2:[]}
 active_resources = []
 
 active_structures = []
@@ -48,13 +49,16 @@ XP_REWARDS = {
 	"copper_ore": 50,
 	"iron_ore": 75,
 	"solarite_ore": 90,
+	"rimfrost_cobalt_ore": 110,
 	"cow": 30,
 	"scorpion": 60,
 	"beetle": 45,
 	"enemy": 60,
 	"zombie": 40,
 	"skeleton": 55,
-	"slime": 25
+	"slime": 25,
+	"frost_wolf": 75,
+	"ice_golem": 120
 }
 
 respawn_queue = []
@@ -75,6 +79,11 @@ RESOURCE_SPAWN_CONFIG =  {
 	    "iron_ore": {"respawn_time": 3000, "spawn_chance": 0.45, "max_per_biome": 15},
 	    "solarite_ore": {"respawn_time": 4500, "spawn_chance": 0.20, "max_per_biome": 5}
 	}
+	2: {
+		"tree": {"respawn_time": 1500, "spawn_chance": 0.40, "max_per_biome": 20},
+		"rock": {"respawn_time": 1800, "spawn_chance": 0.40, "max_per_biome": 15},
+		"rimefrost_cobalt_ore": {"respawn_time": 4200, "spawn_chance": 0.20, "max_per_biome": 12}
+	}
 	
 }
 
@@ -84,11 +93,14 @@ ITEM_REGISTRY = {
 	"Copper Ore": {"color": (184, 115, 51), "is_structure": False, "structure_type": None},
 	"Iron Ore": {"color": (165, 42, 42), "is_structure": False, "structure_type": None},
 	"Solarite Ore": {"color": (255, 140, 0), "is_structure": False, "structure_type": None},
+	"Rimefrost Cobalt Ore": {"color": (70, 130, 180), "is_structure": False, "structure_type": None},
 	"Copper Bar": {"color": (212, 115, 71), "is_structure": False, "structure_type": None},
 	"Iron Bar": {"color": (210, 210, 210), "is_structure": False, "structure_type": None},
 	"Solarite Bar": {"color": (255, 69, 0), "is_structure": False, "structure_type": None},
+	"Rimefrost Cobalt Bar": {"color": (100, 149, 237), "is_structure": False, "structure_type": None},
 	"Leather": {"color": (150, 90, 50), "is_structure": False, "structure_type": None},
 	"Leather Armor": {"color": (100, 65, 35), "is_structure": False, "structure_type": None},
+	"Thermal Lantern": {"color": (255, 180, 0), "is_structure": False, "structure_type": None},
 	"Bone": {"color": (230, 225, 210), "is_structure": False, "structure_type": None},
 	"Slime Gel": {"color": (80, 210, 120), "is_structure": False, "structure_type": None},
 	"Wooden Wall": {"color": (110, 70, 40), "is_structure": True, "structure_type": "wall_wood"},
@@ -123,6 +135,10 @@ ITEM_REGISTRY = {
 		"color": (255, 90, 0), "is_structure": False, "structure_type": None,
 		"swing_duration": 12, "arc_range": math.pi * 0.95, "blade_length": 85, "trail_color": (255, 180, 100, 240) # Burns enemies, lights up tiles
 	},
+	"Cobalt Sword": {
+		"color": (65, 105, 225), "is_structure": False, "structure_type": None,
+		"swing_duration": 14, "arc_range": math.pi * 0.85, "blade_length": 80, "trail_color": (100, 200, 255, 200)
+	},
 	"Copper Pickaxe": {
 		"color": (212, 115, 71), "is_structure": False, "structure_type": None,
 		"swing_duration": 18, "arc_range": math.pi * 0.55, "blade_length": 55, "trail_color": (230, 150, 100, 160)
@@ -134,6 +150,10 @@ ITEM_REGISTRY = {
 	"Solarite Pickaxe": {
 		"color": (255, 69, 0), "is_structure": False, "structure_type": None,
 		"swing_duration": 14, "arc_range": math.pi * 0.65, "blade_length": 65, "trail_color": (255, 150, 50, 200)
+	},
+	"Cobalt Pickaxe": {
+		"color": (70, 130, 180), "is_structure": False, "structure_type": None,
+		"swing_duration": 15, "arc_range": math.pi * 0.6, "blade_length": 62, "trail_color": (100, 220, 255, 180)
 	},
 	"Workbench": {"color": (160, 110, 60), "is_structure": True, "structure_type": "workbench"},
 	"Coal Kiln": {"color": (40,40,45), "is_structure": True, "structure_type": "coal_kiln"},
@@ -150,19 +170,27 @@ RECIPES = [
 	{"result": "Anvil", "ingredients": {"Iron Bar": 5}, "station": "workbench"},
 	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
 	{"result": "Leather Armor", "ingredients": {"Leather": 10}, "station": "workbench"},
+	{"result": "Thermal Lantern", "ingredients": {"Solarite Bar": 2, "Iron Bar": 4, "Coal": 5}, "station": "anvil"},
 	{"result": "Wooden Sword", "ingredients": {"Wood": 6}, "station": None},
 	{"result": "Stone Sword", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
 	{"result": "Chest", "ingredients": {"Wood": 15}, "station": "workbench"},
+	{"result": "Wooden Wall", "ingredients": {"Wood": 4}, "station": "workbench", "yield": 4},
+	{"result": "Stone Wall", "ingredients": {"Stone": 4}, "station": "workbench"},
+	{"result": "Wooden Door", "ingredients": {"Wood": 6}, "station": "workbench"},
+	{"result": "Bed", "ingredients": {"Wood": 8, "Leather": 4}, "station": "workbench"},
 	{"result": "Coal", "ingredients": {"Wood": 2}, "station": "coal_kiln", "duration": 180},
 	{"result": "Copper Bar", "ingredients": {"Copper Ore": 3, "Coal": 1}, "station": "furnace", "duration": 240},
 	{"result": "Iron Bar", "ingredients": {"Iron Ore": 3, "Coal": 1}, "station": "furnace", "duration": 300},
 	{"result": "Solarite Bar", "ingredients": {"Solarite Ore": 3, "Coal": 2}, "station": "furnace", "duration": 420},
+	{"result": "Rimefrost Cobalt Bar", "ingredients": {"Rimefrost Cobalt Ore": 3, "Coal": 2}, "station": "furnace", "duration": 500},
 	{"result": "Copper Sword", "ingredients": {"Wood": 2, "Copper Bar": 5}, "station": "anvil"},
 	{"result": "Iron Sword", "ingredients": {"Wood": 2, "Iron Bar": 5}, "station": "anvil"},
 	{"result": "Solarite Sword", "ingredients": {"Wood": 2, "Solarite Bar": 6}, "station": "anvil"},
+	{"result": "Cobalt Sword", "ingredients": {"Wood": 3, "Rimefrost Cobalt Bar": 5}, "station": "anvil"},
 	{"result": "Copper Pickaxe", "ingredients": {"Wood": 4, "Copper Bar": 4}, "station": "anvil"},
 	{"result": "Iron Pickaxe", "ingredients": {"Wood": 4, "Iron Bar": 4}, "station": "anvil"},
 	{"result": "Solarite Pickaxe", "ingredients": {"Wood": 4, "Solarite Bar": 5}, "station": "anvil"},
+	{"result": "Cobalt Pickaxe", "ingredients": {"Wood": 4, "Rimefrost Cobalt Bar": 4}, "station": "anvil"},
 ]
 
 # player_inventory = {
@@ -196,6 +224,14 @@ dragged_item = None
 drag_source_slot = None
 active_open_chest = None
 
+hotbar_rects = {}
+inv_grid_rects = {}
+craft_panel_rects = []
+armor_slot_rect = pygame.Rect(0,0,0,0)
+trash_slot_rect = pygame.Rect(0,0,0,0)
+chest_grid_rects = {}
+
+
 # GAME OBJECTS &  MAIN CLASSES
 class PlacedStructure:
 	def __init__(self, world_x, world_y, struct_type, color):
@@ -207,6 +243,9 @@ class PlacedStructure:
 		self.output_count = 0
 		if self.type == "chest":
 			self.chest_inventory = {i: {"item": None, "count": 0, "color": None} for i in range(16)}
+		if self.type == "door_wood":
+			self.is_open = False
+
 
 	def update(self):
 		if self.active_production is not None:
@@ -223,8 +262,29 @@ class PlacedStructure:
 		screen_x = self.rect.x - camera_x
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
-			pygame.draw.rect(surface, self.color,(screen_x,screen_y,TILE_SIZE, TILE_SIZE), border_radius=4)
-			pygame.draw.rect(surface, (255,255,255), (screen_x,screen_y,TILE_SIZE,TILE_SIZE), 2, border_radius=4)
+			if self.type == "wall_wood":
+				pygame.draw.rect(surface, self.color,(screen_x,screen_y,TILE_SIZE, TILE_SIZE), border_radius=2)
+				for l in range(4):
+					pygame.draw.line(surface, (70, 40, 20), (screen_x, screen_y + 1 * (TILE_SIZE // 4)), (screen_x + TILE_SIZE, screen_y + 1 * (TILE_SIZE //4)), 2)
+			elif self.type == "wall_stone":
+				pygame.draw.rect(surface, self.color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE), border_radius=2)
+				pygame.draw.line(surface, (50, 50, 50), (screen_x, screen_y + TILE_SIZE // 2), (screen_x + TILE_SIZE, screen_y + TILE_SIZE // 2), 2)
+				pygame.draw.line(surface, (50, 50, 50), (screen_x + TILE_SIZE // 2, screen_y), (screen_x + TILE_SIZE // 2, screen_y + TILE_SIZE // 2), 2)
+				pygame.draw.line(surface, (50, 50, 50), (screen_x + TILE_SIZE //4, screen_y + TILE_SIZE // 2), (screen_x + TILE_SIZE // 4, screen_y + TILE_SIZE), 2)
+			elif self.type == "door_wood":
+				if self.is_open:
+					pygame.draw.rect(surface, self.color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE), 3, border_radius=4)
+				else:
+					pygame.draw.rect(surface, self.color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE), border_radius=4)
+					pygame.draw.rect(surface, (255, 255, 255), (screen_x, screen_y, TILE_SIZE, TILE_SIZE), 1, border_radius=4)
+					pygame.draw.circle(surface, (230, 190, 20), (screen_x + TILE_SIZE - 12, screen_y + TILE_SIZE // 2), 4)
+			elif self.type == "bed":
+				pygame.draw.rect(surface, (120, 80, 40), (screen_x, screen_y, TILE_SIZE, TILE_SIZE), border_radius=4)
+				pygame.draw.rect(surface, self.color, (screen_x + 4, screen_y + 12, TILE_SIZE - 8, TILE_SIZE - 16), border_radius=2)
+				pygame.draw.rect(surface, (245, 245, 245), (screen_x + 4, screen_y + 4, TILE_SIZE - 8, 12), border_radius=2)
+			else:
+				pygame.draw.rect(surface, self.color,(screen_x,screen_y,TILE_SIZE, TILE_SIZE), border_radius=4)
+				pygame.draw.rect(surface, (255,255,255), (screen_x,screen_y,TILE_SIZE,TILE_SIZE), 2, border_radius=4)
 			clean_label = self.type.replace("_", "").upper()
 			lbl_surf = ui_font.render(self.type.upper(), True, (255, 255, 255))
 			surface.blit(lbl_surf, (screen_x + (TILE_SIZE // 2) - (lbl_surf.get_width() // 2), screen_y - 18))
@@ -270,6 +330,10 @@ class Resource:
 			self.color = (255, 140, 0)
 			self.item_yield = "Solarite Ore"
 			self.max_health = 1700
+		elif self.type == "rimefrost_cobalt_ore":
+			self.color = (70, 130, 180)
+			self.item_yield = "Rimefrost Cobalt Ore"
+			self.max_health = 1900
 		self.health = self.max_health
 
 
@@ -278,7 +342,11 @@ class Resource:
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
 			draw_rect = pygame.Rect(screen_x, screen_y, TILE_SIZE, TILE_SIZE)
-			pygame.draw.rect(surface, self.color, draw_rect)
+			if current_biome_index == 2:
+				pygame.draw.rect(surface, (135, 206, 235) if self.type == "tree" else (100, 120, 140) if self.type == "rock" else self.color, draw_rect)
+				pygame.draw.rect(surface, (230, 245, 255), draw_rect, 2)
+			else:
+				pygame.draw.rect(surface, self.color, draw_rect)
 active_mobs = []
 class CowNPC:
 	def __init__(self, world_x, world_y):
@@ -295,6 +363,8 @@ class CowNPC:
 		self.panic_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.is_hostile = False
@@ -315,6 +385,15 @@ class CowNPC:
 				self.burn_timer = 0
 				self.damage_timer = 15
 
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -=1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
+
 		if self.damage_timer > 0:
 			self.damage_timer -=1
 		if self.panic_timer > 0:
@@ -322,6 +401,11 @@ class CowNPC:
 			current_speed = self.panic_speed
 		else:
 			current_speed = self.base_speed
+
+		if self.freeze_ticks > 0:
+			current_speed *= 0.5
+
+
 
 
 		self.move_timer += 1
@@ -338,6 +422,8 @@ class CowNPC:
 		if self.dx != 0:
 			self.rect.x += self.dx
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if self.dx > 0:
 						self.rect.right = obj.rect.left
@@ -346,6 +432,8 @@ class CowNPC:
 		if self.dy != 0:
 			self.rect.y += self.dy
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if self.dy > 0:
 						self.rect.bottom = obj.rect.top
@@ -386,6 +474,10 @@ class CowNPC:
 				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 				burn_mask.fill((255, 140, 0, 120))
 				mob_surf.blit(burn_mask, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
 			surface.blit(mob_surf, (screen_x, screen_y))
 			if self.health < self.max_health:
 				bar_w = TILE_SIZE
@@ -402,6 +494,8 @@ class ScorpionNPC:
 		self.damage_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.state = "idle"
@@ -429,6 +523,14 @@ class ScorpionNPC:
 				self.burn_timer = 0
 				self.damage_timer = 15
 
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -=1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
 		if self.damage_timer > 0:
 			self.damage_timer -= 1
 
@@ -439,6 +541,11 @@ class ScorpionNPC:
 		self.state_timer += 1
 		dx = 0
 		dy = 0
+
+		current_speed = self.speed
+		if self.freeze_ticks >  0:
+			current_speed *= 0.5
+
 		if self.state == "idle":
 			if dist < 350 and self.state_timer > 60:
 				self.state = "windup"
@@ -467,12 +574,16 @@ class ScorpionNPC:
 				self.state = "idle"
 				self.state_timer = 0
 		for obj in active_resources + active_structures:
+			if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 			if self.rect.colliderect(obj.rect):
 				self.state = "idle"
 
 		if dx != 0:
 			self.rect.x += dx
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dx > 0: self.rect.right = obj.rect.left
 					if dx < 0: self.rect.left = obj.rect.right
@@ -480,6 +591,8 @@ class ScorpionNPC:
 		if dy != 0:
 			self.rect.y += dy
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dy > 0: self.rect.bottom = obj.rect.top
 					if dy < 0: self.rect.top = obj.rect.bottom
@@ -492,7 +605,7 @@ class ScorpionNPC:
 			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
 			player_current_health -= real_dmg
 			player_damage_timer = 30
-			hit_pause_frames(3)
+			hit_pause_frames(2)
 
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
@@ -515,6 +628,10 @@ class ScorpionNPC:
 				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 				burn_mask.fill((255, 140, 0, 120))
 				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
 			surface.blit(mob_surf, (screen_x, screen_y))
 			if self.health < self.max_health:
 				bar_w = TILE_SIZE
@@ -531,6 +648,8 @@ class BeetleNPC:
 		self.damage_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.orbit_angle = random.uniform(0, math.pi * 2)
@@ -558,6 +677,14 @@ class BeetleNPC:
 				self.burn_timer = 0
 				self.damage_timer = 15
 
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -=1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
 		if self.damage_timer > 0:
 			self.damage_timer -= 1
 
@@ -569,6 +696,12 @@ class BeetleNPC:
 
 		dx = 0
 		dy = 0
+
+		current_speed = self.speed
+		if self.freeze_ticks > 0:
+			current_speed *= 0.5
+
+
 		if self.state == "orbit":
 			if dist < 400:
 				self.orbit_angle += 0.03
@@ -594,6 +727,8 @@ class BeetleNPC:
 		if dx != 0:
 			self.rect.x += dx
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dx > 0: self.rect.right = obj.rect.left
 					if dx < 0: self.rect.left = obj.rect.right
@@ -602,12 +737,16 @@ class BeetleNPC:
 		if dx != 0:
 			self.rect.y += dy
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dy > 0: self.rect.bottom = obj.rect.top
 					if dy < 0: self.rect.top = obj.rect.bottom
 					self.state = "orbit"
 
 		for obj in active_resources + active_structures:
+			if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 			if self.rect.colliderect(obj.rect):
 				self.state = "orbit"
 
@@ -641,6 +780,10 @@ class BeetleNPC:
 				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 				burn_mask.fill((255, 0 ,0, 140))
 				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
 			surface.blit(mob_surf, (screen_x, screen_y))
 			if self.health < self.max_health:
 				bar_w = TILE_SIZE
@@ -657,6 +800,8 @@ class ZombieNPC:
 		self.damage_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.speed = 1.0 * TILE_SCALE
@@ -686,6 +831,14 @@ class ZombieNPC:
 				self.burn_timer = 0
 				self.damage_timer = 15
 
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -=1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
 		if self.damage_timer > 0:
 			self.damage_timer -= 1
 
@@ -698,12 +851,16 @@ class ZombieNPC:
 		if dx != 0:
 			self.rect.x += dx
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dx > 0: self.rect.right = obj.rect.left
 					if dx < 0: self.rect.left = obj.rect.right
 		if dy != 0:
 			self.rect.y += dy
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dy > 0: self.rect.bottom = obj.rect.top
 					if dy < 0: self.rect.top = obj.rect.bottom
@@ -740,6 +897,10 @@ class ZombieNPC:
 				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 				burn_mask.fill((255, 140, 0 ,120))
 				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
 			surface.blit(mob_surf, (screen_x, screen_y))
 			if self.health < self.max_health:
 				bar_w = TILE_SIZE
@@ -756,6 +917,8 @@ class SkeletonNPC:
 		self.damage_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.speed = 1.4 * TILE_SCALE
@@ -786,6 +949,14 @@ class SkeletonNPC:
 				self.burn_timer = 0
 				self.damage_timer = 15
 
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -=1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
 		if self.damage_timer > 0:
 			self.damage_timer -= 1
 
@@ -799,6 +970,8 @@ class SkeletonNPC:
 		if dx != 0:
 			self.rect.x += dx
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dx > 0: self.rect.right = obj.rect.left
 					if dx < 0: self.rect.left = obj.rect.right
@@ -806,6 +979,8 @@ class SkeletonNPC:
 		if dy != 0:
 			self.rect.y += dy
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if dy > 0: self.rect.bottom = obj.rect.top
 					if dy < 0: self.rect.top = obj.rect.bottom
@@ -844,6 +1019,10 @@ class SkeletonNPC:
 				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 				burn_mask.fill((255, 140, 0, 120))
 				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
 			surface.blit(mob_surf, (screen_x, screen_y))
 			if self.health < self.max_health:
 				bar_w = TILE_SIZE
@@ -860,6 +1039,8 @@ class SlimeNPC:
 		self.damage_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.hop_timer = random.randint(0,30)
@@ -892,6 +1073,14 @@ class SlimeNPC:
 				self.burn_timer = 0
 				self.damage_timer = 15
 
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -=1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
 		if self.damage_timer > 0:
 			self.damage_timer -= 1
 
@@ -911,12 +1100,16 @@ class SlimeNPC:
 		if self.dx != 0:
 			self.rect.x = self.dx
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if self.dx > 0: self.rect.right = obj.rect.left
 					if self.dx < 0: self.rect.left = obj.rect.right
 		if self.dy != 0:
 			self.rect.y = self.dy
 			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
 				if self.rect.colliderect(obj.rect):
 					if self.dy > 0: self.rect.bottom = obj.rect.top
 					if self.dy < 0: self.rect.top = obj.rect.bottom
@@ -952,14 +1145,240 @@ class SlimeNPC:
 					burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 					burn_mask.fill((255, 140, 0, 120))
 					mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
-				surface.blit(mob_surf, (screen_x, screen_y))
+				if self.freeze_ticks > 0:
+					ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+					ice_mask.fill((0, 120, 255, 120))
+					mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+					surface.blit(mob_surf, (screen_x, screen_y))
 				if self.health < self.max_health:
 					bar_w = TILE_SIZE
 					pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
 					pct = max(0.0, self.health / self.max_health)
 					pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
 
+class FrostWolfNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (220, 235, 245)
+		self.health = 200
+		self.max_health = 200
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.speed = 2.4 * TILE_SCALE
+		self.is_hostile = True
+		self.attack_power = 20
 
+	def update(self):
+		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(elf.knockback_dy)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -=1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+
+		current_speed = self.speed
+		if self.freeze_ticks > 0:
+			current_speed *= 0.5
+
+		dx = math.cos(angle) * current_speed
+		dy = math.sin(angle) * current_speed
+
+		if dx != 0:
+			self.rect.x += dx
+			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+					continue
+				if self.rect.colliderect(obj.rect):
+					if dx > 0: self.rect.right = obj.rect.left
+					if dx < 0: self.rect.left = obj.rect.right
+
+		if dy != 0:
+			self.rect.y += dy
+			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+					continue
+				if self.rect.colliderect(obj.rect):
+					if dy > 0: self.rect.bottom = obj.rect.top
+					if dy < 0: self.rect.top = obj.rect.bottom
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			has_protection = armor_slot["item"] == "Leather Armor"
+			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			player_current_health -= real_dmg
+			player_damage_timer = 30
+			hit_pause_frames(3)
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			if self.damage_timer > 0:
+				shake_offset = math.sin(self.damage_timer * 5) * 8
+				screen_x += shake_offset
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=4)
+			pygame.draw.circle(mob_surf, (255, 230, 0), (8, 12), 3)
+			pygame.draw.circle(mob_surf, (255, 230, 0), (8, 12), 3)
+
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+class IceGolemNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE *1.5, TILE_SIZE * 1.5)
+		self.color = (130, 190, 230)
+		self.health = 500
+		self.max_health = 300
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.speed = 0.8 * TILE_SCALE
+		self.is_hostile = True
+		self.attack_power = 30
+
+	def update(self):
+		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx * 0.5)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy * 0.5)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+
+		current_speed = self.speed
+		if self.freeze_ticks > 0:
+			current_speed *= 0.5
+
+		dx = math.cos(angle) * current_speed
+		dy = math.sin(angle) * current_speed
+
+		if dx != 0:
+			self.rect.x += dx
+			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+					continue
+				if self.rect.colliderect(obj.rect):
+					if dx > 0: self.rect.right = obj.rect.left
+					if dx < 0: self.rect.left = obj.rect.right
+		if dy != 0:
+			self.rect.y += dy
+			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+					continue
+				if self.rect.colliderect(obj.rect):
+					if dy > 0: self.rect.bottom = obj.rect.top
+					if dy < 0: self.rect.top = obj.rect.bottom
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			has_protection = armor_slot["item"] == "Leather Armor"
+			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			player_current_health -= real_dmg
+			player_damage_timer = 30
+			hit_pause_frames(3)
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - self.rect.width: self.rect.x = WORLD_WIDTH - self.rect.width
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - self.rect.height: self.rect.y = WORLD_HEIGHT - self.rect.height
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		w, h = self.rect.width, self.rect.height
+		if -w <= screen_x <= SCREEN_WIDTH and -h <= screen_y <= SCREEN_HEIGHT:
+			if self.damage_timer > 0:
+				shake_offset = math.sin(self.damage_timer * 5) * 8
+				screen_x += shake_offset
+			mob_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+			pygame.draw.rect(mob_surf, self.color, (0,0,w, h), border_radius = 8)
+			pygame.draw.rect(mob_surf, (160, 210, 245), (4, 4, w-8, h-8), border_radius=6)
+
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((w, h), pygame.SRCALPHA)
+				red_mask.fill((255, 0 ,0, 140))
+				mob_surf.blit(red_mask, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((w, h), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				pygame.draw.rect(surface, (50, 50, 50), (screen_x, screen_y - 10, w, 6))
+				pct = max(0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(w * pct), 6))
 
 
 
@@ -997,13 +1416,17 @@ entity_respawn_timer = 0
 MAX_COWS_IN_FOREST = 20
 MAX_HOSTILE_ENEMIES_IN_DESERT = 15
 night_spawn_timer = 0
+show_mob_counter = False
 
 
 def hit_pause_frames(frames_count):
-	pause_clock = pygame.time.Clock()
-	for _ in range(frames_count):
-		pause_clock.tick(60)
-
+	enable_hitpause = False
+	if enable_hitpause:
+		pause_clock = pygame.time.Clock()
+		for _ in range(frames_count):
+			pause_clock.tick(60)
+	else:
+		pass
 def generate_all_biomes_at_start(): 
 	world_blueprints.clear()
 	for biome_idx in range(len(biomes)):
@@ -1104,6 +1527,8 @@ def save_structures_state():
 		}
 		if s.type == "chest":
 			state["chest_inventory"] = {k: v.copy() for k, v in s.chest_inventory.items()}
+		if s.type == "door_wood":
+			state["is_open"] = s.is_open
 		structure_blueprints[current_biome_index].append(state)
 
 def load_current_biome_objects():
@@ -1121,6 +1546,8 @@ def load_current_biome_objects():
 		if "active_production" in s_data: struct.active_production = s_data["active_production"]
 		if s_data["type"] == "chest" and "chest_inventory" in s_data:
 			struct.chest_inventory = {k: v.copy() for k, v in s_data["chest_inventory"].items()}
+		if s_data["type"] == "door_wood" and "is_open" in s_data:
+			struct.is_open = s_data["is_open"]
 		active_structures.append(struct)
 
 	if current_biome_index == 0:
@@ -1477,7 +1904,7 @@ def draw_hud_and_inventories(surface):
 # 		label_surface = ui_font.render(slot["label"], True, (230,230,230))
 # 		surface.blit(label_surface, (current_x + (slot_size//2) - (label_surface.get_width() // 2), slot_y - 18))
 def process_console_cheat_command(command_text):
-	global player_current_health, player_max_health
+	global player_current_health, player_max_health, active_mobs, show_mob_counter
 	
 	parts = command_text.strip().split()
 	if not parts:
@@ -1488,6 +1915,18 @@ def process_console_cheat_command(command_text):
 	if base_cmd == "heal":
 		player_current_health = player_max_health
 		print("[CONSOLE CHEAT] Health fully restored!")
+
+	elif base_cmd == "mobs" or base_cmd == "count":
+		show_mob_counter = not show_mob_counter
+		print(f"[CONSOLE CHEAT] Mob Monitor toggled to: {show_mob_counter}")
+		counts = {}
+		for mob in active_mobs:
+			tname = mob.__class__.__name__
+			counts[tname] = counts.get(tname, 0) + 1
+		print("\n[ACTIVE WORLD NPC STATS]")
+		for tname, num in counts.items():
+			print("-" * 25)
+
 
 	elif base_cmd == "give" and len(parts) >= 2:
 		if parts[-1].isdigit():
@@ -1578,13 +2017,14 @@ def process_resource_respawns():
 			respawn_queue.remove(item)
 # MAIN ENGINE LOOP
 while True:
+	mouse_x, mouse_y = pygame.mouse.get_pos()
+	collidables = [obj for obj in active_resources + active_structures]
 	game_time = (game_time + 1) % DAY_DURATION
 	time_pct = game_time / DAY_DURATION
-	mouse_x, mouse_y = pygame.mouse.get_pos()
 	for struct in active_structures:
 		struct.update()
 
-	hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect, chest_grid_rects = draw_hud_and_inventories(screen)
+	# hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect, chest_grid_rects = draw_hud_and_inventories(screen)
 
 	# EVENT PROCESSING
 	for event in pygame.event.get():
@@ -1636,7 +2076,22 @@ while True:
 					if struct.rect.collidepoint(click_world_x, click_world_y):
 						dist = math.hypot(p_cx - struct.rect.centerx, p_cy - struct.rect.centery)
 						if dist <= harvest_range:
-							if struct.type == "chest":
+							if struct.type == "door_wood":
+								struct.is_open = not struct.is_open
+								break
+							elif struct.type == "bed":
+								is_night = (time_pct >= 0.50 or time_pct < 0.10)
+								if is_night:
+									game_time = 0
+									for m in list(active_mobs):
+										if isinstance(m, (ZombieNPC, SkeletonNPC, SlimeNPC)):
+											active_mobs.remove(m)
+									print("[BED] woke up in morning, slept through the night safely.")
+
+								else:
+									print("[BED] cannot sleep during daytime.")
+								break
+							elif struct.type == "chest":
 								is_inventory_open = True
 								active_open_chest = struct
 								break
@@ -1702,6 +2157,7 @@ while True:
 								else:
 									print("[SYSTEM] no available processin station nearby!")
 							else:
+								yield_amt = rcp.get("yield", 1)
 								deduct_crafting_resources(rcp["ingredients"])
 								res_meta = ITEM_REGISTRY[rcp["result"]]
 								add_item_to_inventory(rcp["result"], res_meta["color"], 1)
@@ -1871,9 +2327,9 @@ while True:
 						mob.burn_timer = 0
 
 					if is_critical_hit:
-						hit_pause_frames(40)
+						hit_pause_frames(3)
 					else:
-						hit_pause_frames(20)
+						hit_pause_frames(6)
 					if not mob.is_hostile:
 						mob.start_panic(player_world_x, player_world_y)
 					
@@ -2007,6 +2463,8 @@ while True:
 	player_world_x += dx
 	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 	for obj in active_resources + active_structures:
+		if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+			continue
 		if player_rect.colliderect(obj.rect):
 			if dx > 0:
 				player_world_x = obj.rect.left - player_width
@@ -2022,6 +2480,8 @@ while True:
 	player_world_y += dy
 	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 	for obj in active_resources + active_structures:
+		if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+			continue
 		if player_rect.colliderect(obj.rect):
 			if dy > 0:
 				player_world_y = obj.rect.top - player_height
@@ -2053,12 +2513,17 @@ while True:
 		player_heal_cooldown = 240
 	elif player_heal_cooldown > 0:
 		player_heal_cooldown -=1
+	player_cx = player_world_x + player_width // 2
+	player_cy = player_world_y + player_height // 2
 
 	for mob in list(active_mobs):
-		mob.update()
-		if mob.health <= 0:
-			if mob in active_mobs:
-				active_mobs.remove(mob)
+		dist_to_player = math.hypot(player_cx - mob.rect.centerx, player_cy - mob.rect.centery)
+		if dist_to_player < 1500:
+
+			mob.update()
+			if mob.health <= 0:
+				if mob in active_mobs:
+					active_mobs.remove(mob)
 
 	if is_swinging:
 		swing_timer += 1
@@ -2199,10 +2664,12 @@ while True:
 	# RENDER GRAPHICS
 	screen.fill(biomes[current_biome_index]["grass"])
 	for structure in active_structures:
-		structure.draw(screen,camera_x, camera_y)
+		if (camera_x - TILE_SIZE <= structure.rect.x <= camera_x + SCREEN_WIDTH + TILE_SIZE and camera_y - TILE_SIZE <= structure.rect.y <= camera_y + SCREEN_HEIGHT + TILE_SIZE):
+			structure.draw(screen,camera_x, camera_y)
 
 	for resource in active_resources:
-		resource.draw(screen, camera_x, camera_y)
+		if (camera_x - TILE_SIZE <= resource.rect.x <= camera_x + SCREEN_WIDTH + TILE_SIZE and camera_y - TILE_SIZE <= resource.rect.y <= camera_y + SCREEN_HEIGHT + TILE_SIZE):
+			resource.draw(screen, camera_x, camera_y)
 
 	for mob in active_mobs:
 		mob.draw(screen, camera_x, camera_y)
@@ -2290,7 +2757,7 @@ while True:
 		cheat_display_string = f"CHEAT CONSOLE: {console_input_text}_"
 		console_render = hud_font.render(cheat_display_string, True, (0, 255, 150))
 		screen.blit(console_render, (20, 10))
-	draw_hud_and_inventories(screen)
+	
 
 
 	if time_pct < 0.25:
@@ -2329,6 +2796,46 @@ while True:
 			alpha_reduction = int(current_ambient_alpha * (1 - (radius / base_light_radius)))
 			pygame.draw.circle(ambient_overlay, (r, g, b, alpha_reduction), (p_center_x, p_center_y), radius)
 		screen.blit(ambient_overlay, (0,0))
+	cx, cy = SCREEN_WIDTH - 60, 60
+	pygame.draw.circle(screen, (40, 40, 40), (cx, cy), 28)
+	pygame.draw.circle(screen, (220, 220, 220), (cx, cy), 25)
+	angle = time_pct * 2.0 * math.pi - math.pi / 2
+	hx = cx + math.cos(angle) * 18
+	hy = cy + math.sin(angle) * 18
+	pygame.draw.line(screen, (30,30,30), (cx, cy), (int(hx), int(hy)), 3)
+	indicator_color = (255, 215, 0) if (0.10 <= time_pct < 0.50) else (140, 160, 220)
+	pygame.draw.circle(screen, indicator_color, (int(hx), int(hy)), 5)
+	if show_mob_counter:
+		display_names = {
+			"CowNPC": "Cows",
+			"ZombieNPC": "Zombies",
+			"SkeletonNPC": "Skeletons",
+			"SlimeNPC": "Slimes",
+			"ScorpionNPC": "Scorpions",
+			"BeetleNPC": "Beetles"
+		}
+		counts = {"Cows": 0, "Zombies": 0, "Skeletons": 0, "Slimes": 0, "Scorpions": 0, "Beetles": 0}
+		for mob in active_mobs:
+			tname = mob.__class__.__name__
+			clean_name = display_names.get(tname, tname)
+			counts[clean_name] = counts.get(clean_name, 0) + 1
+
+		px, py = 20, 50
+		panel_w, panel_h = 160, 25 + (len(counts) * 18)
+
+		panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+		panel_surf.fill((0,0,0,180))
+		pygame.draw.rect(panel_surf, (0,255,150), (0,0,panel_w, panel_h), 1, border_radius=4)
+		screen.blit(panel_surf, (px, py))
+		title_surf = ui_font.render("MOB MONITOR", True, (0,255,150))
+		screen.blit(title_surf, (px+10, py + 6))
+		line_y = py + 24
+		for label, val in counts.items():
+			txt_surf = ui_font.render(f"{label}: {val}", True, (255, 255, 255))
+			screen.blit(txt_surf, (px + 10, line_y))
+			line_y += 18
+
+	hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect, chest_grid_rects = draw_hud_and_inventories(screen)
 	pygame.display.flip()
 	clock.tick(60)
 
