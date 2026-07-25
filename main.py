@@ -78,7 +78,7 @@ RESOURCE_SPAWN_CONFIG =  {
 	    "copper_ore": {"respawn_time": 2400, "spawn_chance": 0.55, "max_per_biome": 20},
 	    "iron_ore": {"respawn_time": 3000, "spawn_chance": 0.45, "max_per_biome": 15},
 	    "solarite_ore": {"respawn_time": 4500, "spawn_chance": 0.20, "max_per_biome": 5}
-	}
+	},
 	2: {
 		"tree": {"respawn_time": 1500, "spawn_chance": 0.40, "max_per_biome": 20},
 		"rock": {"respawn_time": 1800, "spawn_chance": 0.40, "max_per_biome": 15},
@@ -1180,7 +1180,7 @@ class FrostWolfNPC:
 			self.rect.x += int(self.knockback_dx)
 			self.knockback_dx *= 0.8
 		if abs(self.knockback_dy) > 0.1:
-			self.rect.y += int(elf.knockback_dy)
+			self.rect.y += int(self.knockback_dy)
 			self.knockback_dy *= 0.8
 
 		if self.burn_ticks > 0:
@@ -1288,7 +1288,7 @@ class IceGolemNPC:
 		self.freeze_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
-		self.speed = 0.8 * TILE_SCALE
+		self.speed = 1.5 * TILE_SCALE
 		self.is_hostile = True
 		self.attack_power = 30
 
@@ -1397,6 +1397,9 @@ player_max_health = 100
 player_current_health = 100
 player_damage_timer = 0
 desert_damage_timer = 0
+cold_exposure = 0
+player_vel_x = 0
+player_vel_y = 0
 game_time = 0
 time_pct = 0
 DAY_DURATION = 14400
@@ -1500,6 +1503,33 @@ def generate_all_biomes_at_start():
 								]
 								random.shuffle(neighbors)
 								queue.extend(neighbors)
+
+				elif biome_idx == 2:
+					if random.random() < 0.04:
+						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
+						occupied_positions.add((x, y))
+					elif random.random() < 0.03:
+						world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
+						occupied_positions.add((x, y))
+					elif random.random() < 0.02:
+						cluster_size = random.randint(2, 4)
+						current_vein_count = 0
+						queue = [(x, y)]
+						while queue and current_vein_count < cluster_size:
+							cx, cy = queue.pop(0)
+							if (cx, cy) not in occupied_positions and 0 <= cx < WORLD_WIDTH and 0 <= cy < WORLD_HEIGHT:
+								world_blueprints[biome_idx].append({"x": cx, "y": cy, "type": "rimefrost_cobalt_ore"})
+								occupied_positions.add((cx, cy))
+								current_vein_count += 1
+								neighbors = [
+									(cx + TILE_SIZE, cy),
+									(cx - TILE_SIZE, y),
+									(cx, cy + TILE_SIZE),
+									(cx, cy - TILE_SIZE)
+								]
+								random.shuffle(neighbors)
+								queue.extend(neighbors)
+
 					# if random.randint(0, 100) <= 1: # Trees are exceptionally rare
 					# 	world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
 					# 	tile_occupied = True
@@ -1562,6 +1592,11 @@ def load_current_biome_objects():
 		for _ in range(3):
 			active_mobs.append(BeetleNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
 
+	elif current_biome_index == 2:
+		for _ in range(4):
+			active_mobs.append(FrostWolfNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
+		for _ in range(2):
+			active_mobs.append(IceGolemNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
 # core world setup
 generate_all_biomes_at_start()
 load_current_biome_objects()
@@ -1647,6 +1682,16 @@ def draw_hud_and_inventories(surface):
 	pygame.draw.rect(surface, (240, 50, 50), (hp_x + 2, hp_y + 2, int((hp_bar_w - 4) * hp_pct), hp_bar_h - 4), border_radius=2)
 	hp_txt = ui_font.render(f"HP: {player_current_health}/{player_max_health}", True, (255,255,255))
 	surface.blit(hp_txt, (hp_x + 5, hp_y + 1))
+
+	cold_bar_w, cold_bar_h = 200, 12
+	cold_x = 20
+	cold_y = 42
+	pygame.draw.rect(surface, (30 ,30 ,45), (cold_x, cold_y, cold_bar_w, cold_bar_h), border_radius=3)
+	cold_pct = min(1, max(0, cold_exposure / 100))
+	if cold_pct > 0:
+		pygame.draw.rect(surface, (0,160,255), (cold_x + 2, cold_y + 2, int((cold_bar_w - 4) * cold_pct), cold_bar_h - 4), border_radius=2)
+	cold_txt = ui_font.render(f"COLD: {int(cold_exposure)}%", True, (160, 220, 255))
+	surface.blit(cold_txt, (cold_x + 5, cold_y - 1))
 
 	p_cx = player_world_x + (player_width // 2)
 	p_cy = player_world_y + (player_height // 2)
@@ -1997,6 +2042,8 @@ def process_resource_respawns():
 							ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
 						elif target_biome == 0:
 							ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
+						elif target_biome == 2:
+							ry = (random.randint(50, WORLD_HEIGHT - 100) // TILE_SIZE) * TILE_SIZE
 
 						if abs(rx - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(ry - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
 							continue
@@ -2016,6 +2063,9 @@ def process_resource_respawns():
 								active_resources.append(Resource(rx, ry, res_type))
 			respawn_queue.remove(item)
 # MAIN ENGINE LOOP
+camera_x = 0
+camera_y = 0
+
 while True:
 	mouse_x, mouse_y = pygame.mouse.get_pos()
 	collidables = [obj for obj in active_resources + active_structures]
@@ -2299,7 +2349,8 @@ while True:
 						"Stone Pickaxe": 4,
 						"Copper Sword": 11,
 						"Iron Sword": 15,
-						"Solarite Sword": 19
+						"Solarite Sword": 19,
+						"Cobalt Sword": 23
 					}
 					# base_attack_damage = 5
 					# if active_hand_item == "Wooden Sword":
@@ -2326,6 +2377,10 @@ while True:
 						mob.burn_ticks = 4
 						mob.burn_timer = 0
 
+					if active_hand_item == "Cobalt Sword":
+						mob.freeze_ticks = 8
+						mob.freeze_timer= 0
+
 					if is_critical_hit:
 						hit_pause_frames(3)
 					else:
@@ -2350,6 +2405,12 @@ while True:
 							elif isinstance(mob, SlimeNPC):
 								add_item_to_inventory("Slime Gel", ITEM_REGISTRY["Slime Gel"]["color"], random.randint(2, 4))
 								process_xp_gain(XP_REWARDS["slime"])
+							elif isinstance(mob, FrostWolfNPC):
+								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(3, 5))
+								process_xp_gain(XP_REWARDS["frost_wolf"])
+							elif isinstance(mob, IceGolemNPC):
+								add_item_to_inventory("Rimefrost Cobalt Ore", ITEM_REGISTRY["Rimefrost Cobalt Ore"]["color"], random.randint(3, 6))
+								process_xp_gain(XP_REWARDS["ice_golem"])
 						else:
 							add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
 							process_xp_gain(XP_REWARDS["cow"])
@@ -2372,24 +2433,23 @@ while True:
 			harvest_speed = 0
 
 			if active_harvest_target.type == "tree":
-				harvest_speed = 4 if active_hand_item == ["Stone Pickaxe", "Copper Pickaxe", "Iron Pickaxe"] else 6 if active_hand_item == "Solarite Pickaxe" else 1
+				harvest_speed = 4 if active_hand_item == ["Stone Pickaxe", "Copper Pickaxe", "Iron Pickaxe"] else 6 if active_hand_item == "Solarite Pickaxe" else 8 if active_hand_item == "Cobalt Pickaxe" else 1
 			elif active_harvest_target.type == "rock":
-				harvest_speed = 5 if active_hand_item == "Stone Pickaxe" else 5 if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"] else 7 if active_hand_item == "Solarite Pickaxe" else 1
+				harvest_speed = 5 if active_hand_item == "Stone Pickaxe" else 5 if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"] else 7 if active_hand_item == "Solarite Pickaxe" else 9 if active_hand_item == "Cobalt Pickaxe" else 1
 			elif active_harvest_target.type in "copper_ore":
-				if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"]:
-					harvest_speed = 4
-				elif  active_hand_item == "Solarite Pickaxe":
-					harvest_speed = 7
+				harvest_speed = 4 if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"] else 7 if active_hand_item == "Solarite Pickaxe" else 10 if active_hand_item == "Cobalt Pickaxe" else 1
 			elif active_harvest_target.type == "iron_ore":
-				if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"]:
-					harvest_speed = 4
-				elif  active_hand_item == "Solarite Pickaxe":
-					harvest_speed = 6
+				harvest_speed = 4 if active_hand_item in ["Copper Pickaxe", "Iron Pickaxe"] else 6 if active_hand_item == "Solarite Pickaxe" else 8 if active_hand_item == "Cobalt Pickaxe" else 1
 			elif active_harvest_target.type == "solarite_ore":
-				if active_hand_item == "Iron Pickaxe":
-					harvest_speed = 1
-				elif active_hand_item == "Solarite Pickaxe":
-					harvest_speed = 3
+				harvest_speed = 1 if active_hand_item == "Iron Pickaxe" else 3 if active_hand_item == "Solarite Pickaxe" else 5 if active_hand_item == "Cobalt Pickaxe" else 1
+			elif active_harvest_target.type == "rimefrost_cobalt_ore":
+				if active_hand_item == "Solarite Pickaxe":
+					harvest_speed = 2
+				elif active_hand_item == "Cobalt Pickaxe":
+					harvest_speed = 5
+				else:
+					harvest_speed = 0
+
 			if harvest_speed > 0:
 				harvest_progress += harvest_speed
 
@@ -2452,41 +2512,65 @@ while True:
 
 	# INPUT
 	keys = pygame.key.get_pressed()
-	# X AXIS MOVEMENT AND COLLISION
-	dx = 0
+
+	target_vel_x = 0
 	if not is_console_open:
 		if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-			dx -= player_speed
+			target_vel_x -= player_speed
 		if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-			dx += player_speed
-
-	player_world_x += dx
-	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
-	for obj in active_resources + active_structures:
-		if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
-			continue
-		if player_rect.colliderect(obj.rect):
-			if dx > 0:
-				player_world_x = obj.rect.left - player_width
-			if dx < 0:
-				player_world_x = obj.rect.right
-	# Y AXIS MOVEMENT AND COLLISION
-	dy = 0	
+			target_vel_x += player_speed
+	target_vel_y = 0
 	if not is_console_open:
 		if keys[pygame.K_UP] or keys[pygame.K_w]:
-			dy -= player_speed
+			target_vel_y -= player_speed
 		if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-			dy += player_speed
-	player_world_y += dy
+			target_vel_y += player_speed
+
+	if current_biome_index == 2:
+		accel_rate =0.12
+		slide_friction = 0.94
+		player_vel_x += (target_vel_x - player_vel_x) * accel_rate
+		player_vel_y += (target_vel_y - player_vel_y) * accel_rate
+		if target_vel_x == 0:
+			player_vel_x *= slide_friction
+		if target_vel_y == 0:
+			player_vel_y *= slide_friction
+	else:
+		player_vel_x = target_vel_x
+		player_vel_y = target_vel_y
+
+
+	# X AXIS MOVEMENT AND COLLISION
+
+	player_world_x += int(player_vel_x)
 	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 	for obj in active_resources + active_structures:
 		if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 			continue
 		if player_rect.colliderect(obj.rect):
-			if dy > 0:
+			if player_vel_x > 0:
+				player_world_x = obj.rect.left - player_width
+				player_vel_x = 0
+			elif player_vel_x < 0:
+				player_world_x = obj.rect.right
+				player_vel_x = 0
+
+
+	# Y AXIS MOVEMENT AND COLLISION
+		
+	
+	player_world_y += int(player_vel_y)
+	player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+	for obj in active_resources + active_structures:
+		if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+			continue
+		if player_rect.colliderect(obj.rect):
+			if player_vel_y > 0:
 				player_world_y = obj.rect.top - player_height
-			if dy < 0:
+				player_vel_y = 0
+			if player_vel_y < 0:
 				player_world_y = obj.rect.bottom
+				player_vel_y = 0
 	# Y AXIS WORLD BOUNDARIES
 	if player_world_y < 0: player_world_y = 0
 	if player_world_y > WORLD_HEIGHT - player_height: player_world_y = WORLD_HEIGHT - player_height
@@ -2619,6 +2703,18 @@ while True:
 						active_mobs.append(ScorpionNPC(rx, ry))
 					else:
 						active_mobs.append(BeetleNPC(rx, ry))
+	elif current_biome_index == 2:
+		if len(active_mobs) < 6:
+			entity_respawn_timer += 1
+			if entity_respawn_timer >= 450:
+				entity_respawn_timer = 0
+				rx = random.randint(50, WORLD_WIDTH - 50)
+				ry = random.randint(50, WORLD_HEIGHT - 50)
+				if math.hypot(rx - player_world_x, ry - player_world_y) > 400:
+					if random.random() < 0.7:
+						active_mobs.append(FrostWolfNPC(rx, ry))
+					else:
+						active_mobs.append(IceGolemNPC(rx, ry))
 	else:
 		entity_respawn_timer = 0
 
@@ -2638,8 +2734,43 @@ while True:
 					player_current_health = player_max_health
 	else:
 		desert_damage_timer = 0
+
+	has_lantern = False
+	for slot in inventory_slots.values():
+		if slot["item"] == "Thermal Lantern":
+			has_lantern = True
+			break
+	if armor_slot["item"] == "Thermal Lantern":
+		has_lantern = True
+
+	near_heater = False
+	for struct in active_structures:
+		if struct.type in ["furnace", "coal_kiln"]:
+			dist = math.hypot(player_cx - struct.rect.centerx, player_cy = struct.rect.centery)
+			if dist <= 180:
+				near_heater = True
+				break
+
+	if current_biome_index == 2:
+		if has_lantern or near_heater:
+			cold_exposure = max(0, cold_exposure - 0.4)
+		else:
+			cold_exposure = min(100, cold_exposure + 0.12)
+
+		if cold_exposure >= 100:
+			player_current_health -= 0.15
+			if random.random() < 0.05:
+				player_damage_timer = 5
+	else:
+		cold_exposure = max(0, cold_exposure - 0.8)
+
+
+
+
 	is_taking_heat_damage = (current_biome_index == 1 and armor_slot["item"] != "Leather Armor")
-	if player_heal_cooldown <= 0 and not is_taking_heat_damage:
+	is_freezing = (current_biome_index == 2 and cold_exposure >= 100)
+
+	if player_heal_cooldown <= 0 and not is_taking_heat_damage and not is_freezing:
 		if player_current_health < player_max_health:
 			player_current_health = min(player_max_health, player_current_health + 0.1)
 
@@ -2812,7 +2943,9 @@ while True:
 			"SkeletonNPC": "Skeletons",
 			"SlimeNPC": "Slimes",
 			"ScorpionNPC": "Scorpions",
-			"BeetleNPC": "Beetles"
+			"BeetleNPC": "Beetles",
+			"FrostWolfNPC" : "Frost Wolves",
+			"IceGolemNPC": "Ice Golems"
 		}
 		counts = {"Cows": 0, "Zombies": 0, "Skeletons": 0, "Slimes": 0, "Scorpions": 0, "Beetles": 0}
 		for mob in active_mobs:
