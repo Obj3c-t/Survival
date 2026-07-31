@@ -33,6 +33,12 @@ biomes = [
 	{"name": "Desert", "grass": (225, 191, 117)},
 	{"name": "Glacial Tundra","grass": (210, 233, 240)}
 ]
+INV_SLOT_SIZE = 50
+INV_PADDING = 10
+INV_W = (INV_SLOT_SIZE * 5) + (INV_PADDING * 6) + 120
+INV_H = (INV_SLOT_SIZE * 4) + (INV_PADDING * 5) + 60
+INV_X = (SCREEN_WIDTH // 2) - (INV_W // 2) - 130
+INV_Y = (SCREEN_HEIGHT // 2) - (INV_H // 2) - 30
 current_biome_index = 0
 world_blueprints = {}
 structure_blueprints = {0: [], 1: [], 2:[]}
@@ -100,6 +106,11 @@ ITEM_REGISTRY = {
 	"Rimefrost Cobalt Bar": {"color": (100, 149, 237), "is_structure": False, "structure_type": None},
 	"Leather": {"color": (150, 90, 50), "is_structure": False, "structure_type": None},
 	"Leather Armor": {"color": (100, 65, 35), "is_structure": False, "structure_type": None},
+	"Iron Armor": {"color": (140, 145, 150), "is_structure": False, "structure_type": None},
+	"Solarite Armor": {"color": (245, 120, 20), "is_structure": False, "structure_type": None},
+	"Cobalt Armor": {"color": (60, 140, 240), "is_structure": False, "structure_type": None},
+	"Iron Shield": {"color": (175, 180, 185), "is_structure": False, "structure_type": None},
+	"Golem Core": {"color": (0, 190, 255), "is_structure": False, "structure_type": None},
 	"Thermal Lantern": {"color": (255, 180, 0), "is_structure": False, "structure_type": None},
 	"Bone": {"color": (230, 225, 210), "is_structure": False, "structure_type": None},
 	"Slime Gel": {"color": (80, 210, 120), "is_structure": False, "structure_type": None},
@@ -170,6 +181,10 @@ RECIPES = [
 	{"result": "Anvil", "ingredients": {"Iron Bar": 5}, "station": "workbench"},
 	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
 	{"result": "Leather Armor", "ingredients": {"Leather": 10}, "station": "workbench"},
+	{"result": "Iron Armor", "ingredients": {"Iron Bar": 15}, "station": "workbench"},
+	{"result": "Solarite Armor", "ingredients": {"Solarite Bar": 12, "Coal": 4}, "station": "workbench"},
+	{"result": "Cobalt Armor", "ingredients": {"Rimefrost Cobalt Bar": 10}, "station": "workbench"},
+	{"result": "Iron Shield", "ingredients": {"Iron Bar": 8, "Wood": 4}, "station": "workbench"},
 	{"result": "Thermal Lantern", "ingredients": {"Solarite Bar": 2, "Iron Bar": 4, "Coal": 5}, "station": "anvil"},
 	{"result": "Wooden Sword", "ingredients": {"Wood": 6}, "station": None},
 	{"result": "Stone Sword", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
@@ -214,6 +229,8 @@ RECIPES = [
 TOTAL_SLOTS = 24
 inventory_slots = {i: {"item": None, "count": 0, "color": None} for i in range(TOTAL_SLOTS)}
 armor_slot = {"item": None, "count": 0, "color": None}
+shield_slot = {"item": None, "count": 0, "color": None}
+
 
 is_inventory_open = False
 selected_hotbar_slot = 0
@@ -228,8 +245,11 @@ hotbar_rects = {}
 inv_grid_rects = {}
 craft_panel_rects = []
 armor_slot_rect = pygame.Rect(0,0,0,0)
+shield_slot_rect = pygame.Rect(0,0,0,0)
 trash_slot_rect = pygame.Rect(0,0,0,0)
 chest_grid_rects = {}
+
+craft_scroll_y = 0
 
 
 # GAME OBJECTS &  MAIN CLASSES
@@ -365,11 +385,17 @@ class CowNPC:
 		self.burn_timer = 0
 		self.freeze_ticks = 0
 		self.freeze_timer = 0
+		self.stun_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.is_hostile = False
 
 	def update(self):
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			self.dx = 0
+			self.dy = 0
+			return
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx)
 			self.knockback_dx *= 0.8
@@ -463,7 +489,11 @@ class CowNPC:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-			pygame.draw.rect(mob_surf, self.color, (0, 0, TILE_SIZE, TILE_SIZE), border_radius = 6)
+
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (255, 215, 0), (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
+			else:
+				pygame.draw.rect(mob_surf, self.color, (0, 0, TILE_SIZE, TILE_SIZE), border_radius = 6)
 			pygame.draw.rect(mob_surf, (60,45,30), (8,8, 12, 12), border_radius=2)
 
 			if self.damage_timer > 0:
@@ -496,6 +526,7 @@ class ScorpionNPC:
 		self.burn_timer = 0
 		self.freeze_ticks = 0
 		self.freeze_timer = 0
+		self.stun_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.state = "idle"
@@ -507,6 +538,12 @@ class ScorpionNPC:
 		self.attack_power = 15
 	def update(self):
 		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			self.charge_dx = 0
+			self.charge_dy = 0
+			return
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx)
@@ -600,12 +637,13 @@ class ScorpionNPC:
 
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
-		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
-			has_protection = armor_slot["item"] == "Leather Armor"
-			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
-			player_current_health -= real_dmg
-			player_damage_timer = 30
-			hit_pause_frames(2)
+		if self.rect.colliderect(player_rect):
+			# has_protection = armor_slot["item"] == "Leather Armor"
+			# real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			# player_current_health -= real_dmg
+			# player_damage_timer = 30
+			# hit_pause_frames(2)
+			damage_player(self.attack_power, self)
 
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
@@ -617,7 +655,10 @@ class ScorpionNPC:
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-			base_col = (255, 165, 0) if (self.state == "windup" and pygame.time.get_ticks() % 100 < 50) else self.color
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				base_col = (255, 215, 0)
+			else:
+				base_col = (255, 165, 0) if (self.state == "windup" and pygame.time.get_ticks() % 100 < 50) else self.color
 			pygame.draw.rect(mob_surf, base_col, (0, 0, TILE_SIZE, TILE_SIZE), border_radius=6)
 			pygame.draw.rect(mob_surf, (100, 30, 30), (TILE_SIZE // 2 - 6, -6, 12, 12), border_radius=3)
 			if self.damage_timer > 0:
@@ -650,6 +691,7 @@ class BeetleNPC:
 		self.burn_timer = 0
 		self.freeze_ticks = 0
 		self.freeze_timer = 0
+		self.stun_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.orbit_angle = random.uniform(0, math.pi * 2)
@@ -661,6 +703,10 @@ class BeetleNPC:
 
 	def update(self):
 		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			return
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx)
@@ -752,13 +798,13 @@ class BeetleNPC:
 
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
-		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
-			has_protection = armor_slot["item"] == "Leather Armor"
-			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
-			player_current_health -= real_dmg
-			player_damage_timer = 30
-			hit_pause_frames(3)
-
+		if self.rect.colliderect(player_rect):
+			# has_protection = armor_slot["item"] == "Leather Armor"
+			# real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			# player_current_health -= real_dmg
+			# player_damage_timer = 30
+			# hit_pause_frames(3)
+			damage_player(self.attack_power, self)
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
 		if self.rect.y < 0: self.rect.y = 0
@@ -769,7 +815,11 @@ class BeetleNPC:
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-			pygame.draw.rect(mob_surf, self.color, (0,0,TILE_SIZE, TILE_SIZE), border_radius=8)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (255, 215, 0), (0,0, TILE_SIZE, TILE_SIZE), border_radius=8)
+			else:
+
+				pygame.draw.rect(mob_surf, self.color, (0,0,TILE_SIZE, TILE_SIZE), border_radius=8)
 			pygame.draw.rect(mob_surf,(30, 45, 70), (4, 4, TILE_SIZE - 8, TILE_SIZE - 8), border_radius=4)
 			pygame.draw.line(mob_surf, (15, 20, 35), (TILE_SIZE // 2, 4), (TILE_SIZE // 2, TILE_SIZE - 4), 2)
 			if self.damage_timer > 0:
@@ -802,6 +852,7 @@ class ZombieNPC:
 		self.burn_timer = 0
 		self.freeze_ticks = 0
 		self.freeze_timer = 0
+		self.stun_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.speed = 1.0 * TILE_SCALE
@@ -810,6 +861,10 @@ class ZombieNPC:
 
 	def update(self):
 		global player_world_x, player_world_y, player_current_health, player_damage_timer, time_pct
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			return
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx)
@@ -866,12 +921,13 @@ class ZombieNPC:
 					if dy < 0: self.rect.top = obj.rect.bottom
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height,)
-		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
-			has_protection = armor_slot["item"] == "Leather Armor"
-			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
-			player_current_health -= real_dmg
-			player_damage_timer = 30
-			hit_pause_frames(3)
+		if self.rect.colliderect(player_rect):
+			# has_protection = armor_slot["item"] == "Leather Armor"
+			# real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			# player_current_health -= real_dmg
+			# player_damage_timer = 30
+			# hit_pause_frames(3)
+			damage_player(self.attack_power, self)
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
 		if self.rect.y < 0: self.rect.y = 0
@@ -885,7 +941,10 @@ class ZombieNPC:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-			pygame.draw.rect(mob_surf, self.color, (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (215, 255, 0), (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
+			else:
+				pygame.draw.rect(mob_surf, self.color, (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
 			pygame.draw.rect(mob_surf, (180, 20, 20), (6, 8, 8, 6), border_radius=1)
 			pygame.draw.rect(mob_surf, (180, 20, 20), (22, 8, 8, 6), border_radius=1)
 
@@ -919,6 +978,7 @@ class SkeletonNPC:
 		self.burn_timer = 0
 		self.freeze_ticks = 0
 		self.freeze_timer = 0
+		self.stun_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.speed = 1.4 * TILE_SCALE
@@ -927,6 +987,10 @@ class SkeletonNPC:
 
 	def update(self):
 		global player_world_x, player_world_y, player_current_health, player_damage_timer, time_pct
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			return
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx)
@@ -986,12 +1050,13 @@ class SkeletonNPC:
 					if dy < 0: self.rect.top = obj.rect.bottom
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
-		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
-			has_protection = armor_slot["item"] == "Leather Armor"
-			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
-			player_current_health -= real_dmg
-			player_damage_timer = 30
-			hit_pause_frames(3)
+		if self.rect.colliderect(player_rect):
+			# has_protection = armor_slot["item"] == "Leather Armor"
+			# real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			# player_current_health -= real_dmg
+			# player_damage_timer = 30
+			# hit_pause_frames(3)
+			damage_player(self.attack_power, self)
 
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
@@ -1006,7 +1071,11 @@ class SkeletonNPC:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-			pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=6)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (255, 215, 0), (0,0, TILE_SIZE, TILE_SIZE), border_radius=6)
+			else:
+
+				pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=6)
 			pygame.draw.line(mob_surf, (50,50,50), (6, 12), (TILE_SIZE - 6, 12), 2)
 			pygame.draw.line(mob_surf, (50,50,50), (6, 20), (TILE_SIZE - 6, 20), 2)
 			pygame.draw.line(mob_surf, (50,50,50), (6, 28), (TILE_SIZE - 6, 28), 2)
@@ -1041,6 +1110,7 @@ class SlimeNPC:
 		self.burn_timer = 0
 		self.freeze_ticks = 0
 		self.freeze_timer = 0
+		self.stun_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.hop_timer = random.randint(0,30)
@@ -1052,6 +1122,12 @@ class SlimeNPC:
 
 	def update(self):
 		global player_world_x, player_world_y, player_current_health, player_damage_timer, time_pct
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			self.dx = 0
+			self.dy = 0
+			return
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx)
@@ -1115,12 +1191,13 @@ class SlimeNPC:
 					if self.dy < 0: self.rect.top = obj.rect.bottom
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
-		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
-			has_protection = armor_slot["item"] == "Leather Armor"
-			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
-			player_current_health -= real_dmg
-			player_damage_timer = 30
-			hit_pause_frames(3)
+		if self.rect.colliderect(player_rect):
+			# has_protection = armor_slot["item"] == "Leather Armor"
+			# real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			# player_current_health -= real_dmg
+			# player_damage_timer = 30
+			# hit_pause_frames(3)
+			damage_player(self.attack_power, self)
 
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
@@ -1135,7 +1212,10 @@ class SlimeNPC:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
 				mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-				pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=12)
+				if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+					pygame.draw.rect(mob_surf, (255, 215, 0), (0,0, TILE_SIZE, TILE_SIZE), border_radius=12)
+				else:
+					pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=12)
 				pygame.draw.circle(mob_surf, (255, 255, 255, 180), (12, TILE_SIZE - 12), 4)
 				if self.damage_timer > 0:
 					red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
@@ -1167,6 +1247,7 @@ class FrostWolfNPC:
 		self.burn_timer = 0
 		self.freeze_ticks = 0
 		self.freeze_timer = 0
+		self.stun_timer = 0
 		self.knockback_dx = 0
 		self.knockback_dy = 0
 		self.speed = 2.4 * TILE_SCALE
@@ -1175,6 +1256,10 @@ class FrostWolfNPC:
 
 	def update(self):
 		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			return
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx)
@@ -1233,11 +1318,12 @@ class FrostWolfNPC:
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
-			has_protection = armor_slot["item"] == "Leather Armor"
-			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
-			player_current_health -= real_dmg
-			player_damage_timer = 30
-			hit_pause_frames(3)
+			# has_protection = armor_slot["item"] == "Leather Armor"
+			# real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			# player_current_health -= real_dmg
+			# player_damage_timer = 30
+			# hit_pause_frames(3)
+			damage_player(self.attack_power, self)
 
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
@@ -1252,7 +1338,10 @@ class FrostWolfNPC:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-			pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=4)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (255, 215, 0), (0,0, TILE_SIZE, TILE_SIZE), border_radius=4)
+			else:
+				pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=4)
 			pygame.draw.circle(mob_surf, (255, 230, 0), (8, 12), 3)
 			pygame.draw.circle(mob_surf, (255, 230, 0), (8, 12), 3)
 
@@ -1292,8 +1381,27 @@ class IceGolemNPC:
 		self.is_hostile = True
 		self.attack_power = 30
 
+		self.stun_timer = 0
+		self.state = "walk"
+		self.state_timer = 0
+
+		self.throw_cooldown = 120
+
+		self.charge_phase = 0
+		self.charge_angle = 0
+		self.charge_dashes_left = 0
+
+		self.roar_radius = 220
+
+
 	def update(self):
 		global player_world_x, player_world_y, player_current_health, player_damage_timer
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			self.state = "walk"
+			self.state_timer = 0
+			return
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx * 0.5)
@@ -1315,6 +1423,7 @@ class IceGolemNPC:
 
 		px = player_world_x + player_width // 2
 		py = player_world_y + player_height // 2
+		dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
 		angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
 
 		current_speed = self.speed
@@ -1323,6 +1432,61 @@ class IceGolemNPC:
 
 		dx = math.cos(angle) * current_speed
 		dy = math.sin(angle) * current_speed
+
+		if self.state == "roar_windup":
+			dx = 0 
+			dy = 0
+			if self.state_timer >= 300:
+				self.state = "walk"
+				self.state_timer = 0
+				if dist <= self.roar_radius:
+					damage_player(40, self)
+
+		elif self.state == "snowball_charge":
+			dx = math.cos(self.charge_angle) * (self.speed * 6.5)
+			dy = math.sin(self.charge_angle) * (self.speed * 6.5)
+
+			if self.state_timer >= 22:
+				self.state_timer = 0
+				self.charge_dashes_left -= 1
+				if self.charge_dashes_left > 0:
+					base_angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+					offset = math.pi / 4 if self.charge_dashes_left % 2 == 0 else -math.pi /4
+					self.charge_angle = base_angle + offset
+				else:
+					self.state = "walk"
+					self.state_timer = 0
+
+		else:
+			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+			dx = math.cos(angle) * self.speed
+			dy = math.sin(angle) * self.speed
+
+			if self.state_timer >= 210:
+				self.state_timer = 0
+				choice = random.random()
+
+				if choice < 0.35:
+					self.state = "roar_windup"
+				elif choice < 0.70:
+					self.state = "snowball_charge"
+					self.charge_dashes_left = 4
+					base_angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+					self.charge_angle = base_angle + (math.pi / 4)
+				else:
+					if self.throw_cooldown <= 0:
+						self.throw_cooldown = 150
+						ang = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+						projectiles.append({
+							"x": self.rect.centerx,
+							"y": self.rect.centery,
+							"dx": math.cos(ang) * 9,
+							"dy": math.sin(ang) * 9,
+							"radius": 14,
+							"color": (160, 210, 245),
+							"is_player_owned": False,
+							"damage": 22
+							})
 
 		if dx != 0:
 			self.rect.x += dx
@@ -1343,11 +1507,13 @@ class IceGolemNPC:
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
-			has_protection = armor_slot["item"] == "Leather Armor"
-			real_dmg = self.attack_power // 2 if has_protection else self.attack_power
-			player_current_health -= real_dmg
-			player_damage_timer = 30
-			hit_pause_frames(3)
+			# has_protection = armor_slot["item"] == "Leather Armor"
+			# real_dmg = self.attack_power // 2 if has_protection else self.attack_power
+			# player_current_health -= real_dmg
+			# player_damage_timer = 30
+			# hit_pause_frames(3)
+			dmg = self.attack_power + 10 if self.state == "snowball_charge" else self.attack_power
+			damage_player(dmg, self)
 
 		if self.rect.x < 0: self.rect.x = 0
 		if self.rect.x > WORLD_WIDTH - self.rect.width: self.rect.x = WORLD_WIDTH - self.rect.width
@@ -1359,12 +1525,28 @@ class IceGolemNPC:
 		screen_y = self.rect.y - camera_y
 		w, h = self.rect.width, self.rect.height
 		if -w <= screen_x <= SCREEN_WIDTH and -h <= screen_y <= SCREEN_HEIGHT:
+			if self.state == "roar_windup":
+				warn_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+				alpha = 80 + int(math.sin(pygame.get_ticks() * 0.015) * 50)
+				pygame.draw.circle(warn_surf, (255, 0, 0, alpha), (int(self.rect.centerx - camera_x), int(self.rect.centery - camera_y)), self.roar_radius)
+				pygame.draw.circle(warn_surf, (255, 0, 0, 240), (int(self.rect.centerx - camera_x), int(self.rect.centery - camera_y)), self.roar_radius, 3)
+				surface.blit(warn_surf, (0,0))
+
 			if self.damage_timer > 0:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
+
 			mob_surf = pygame.Surface((w, h), pygame.SRCALPHA)
-			pygame.draw.rect(mob_surf, self.color, (0,0,w, h), border_radius = 8)
-			pygame.draw.rect(mob_surf, (160, 210, 245), (4, 4, w-8, h-8), border_radius=6)
+			if self.state == "snowball_charge":
+				angle_rot = (pygame.time.get_ticks() // 4) % 360
+				pygame.draw.circle(mob_surf, (240, 245, 255), (w//2, h//2), w//2, border_radius = 0)
+				pygame.draw.circle(mob_surf, (150, 200, 240), (w//2, h//2), w//2, 4)
+			else:
+				if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+					pygame.draw.rect(mob_surf, (255, 215, 0), (0,0,w, h), border_radius = 8)
+				else:
+					pygame.draw.rect(mob_surf, self.color, (0,0,w, h), border_radius = 8)
+				pygame.draw.rect(mob_surf, (160, 210, 245), (4, 4, w-8, h-8), border_radius=6)
 
 			if self.damage_timer > 0:
 				red_mask = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -1380,7 +1562,42 @@ class IceGolemNPC:
 				pct = max(0, self.health / self.max_health)
 				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(w * pct), 6))
 
+def damage_player(amount, attacker):
+	global player_current_health, player_damage_timer, shield_cooldown, parry_splash_timer, parry_splash_text
 
+	if parry_timer > 0:
+		parry_splash_timer = 45
+		parry_splash_text = "PARRIED"
+
+		attacker.knockback_dx = -attacker.knockback_dx * 1.5
+		attacker.knockback_dy = -attacker.knockback_dy * 1.5
+		if hasattr(attacker, "stun_timer"):
+			attacker.stun_timer = 90
+			attacker.damage_timer = 20
+		return
+
+	if is_blocking and shield_cooldown <= 0:
+		parry_splash_timer = 30
+		parry_splash_text = "BLOCKED"
+		shield_cooldown = 420
+		return
+
+	if player_damage_timer <= 0:
+		armor_reduction = 0
+		equipped_armor = armor_slot["item"]
+		if equipped_armor == "Leather Armor":
+			armor_reduction = 0.20
+		elif equipped_armor == "Iron Armor":
+			armor_reduction = 0.40
+		elif equipped_armor == "Solarite Armor":
+			armor_reduction = 0.55
+		elif equipped_armor == "Cobalt Armor":
+			armor_reduction = 0.65
+
+		final_damage = max(1, amount * (1 - armor_reduction))
+		player_current_health -= final_damage
+		player_damage_timer = 30
+		hit_pause_frames(3)
 
 # PLAYER INIT
 player_heal_cooldown = 0
@@ -1400,6 +1617,13 @@ desert_damage_timer = 0
 cold_exposure = 0
 player_vel_x = 0
 player_vel_y = 0
+parry_timer = 0
+is_blocking = False
+shield_cooldown = 0
+projectiles = []
+parry_splash_timer = 0
+parry_splash_text = ""
+
 game_time = 0
 time_pct = 0
 DAY_DURATION = 14400
@@ -1593,9 +1817,9 @@ def load_current_biome_objects():
 			active_mobs.append(BeetleNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
 
 	elif current_biome_index == 2:
-		for _ in range(4):
+		for _ in range(15):
 			active_mobs.append(FrostWolfNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
-		for _ in range(2):
+		for _ in range(6):
 			active_mobs.append(IceGolemNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
 # core world setup
 generate_all_biomes_at_start()
@@ -1622,6 +1846,8 @@ def get_total_inventory_counts():
 			counts[data["item"]] = counts.get(data["item"], 0) + data["count"] 
 	if armor_slot["item"] is not None:
 		counts[armor_slot["item"]] = counts.get(armor_slot["item"], 0) + armor_slot["count"]
+	if shield_slot["item"] is not None:
+		counts[shield_slot["item"]] = counts.get(shield_slot["item"], 0) + shield_slot["count"]
 	return counts
 
 def deduct_crafting_resources(ingredients):
@@ -1651,16 +1877,17 @@ def scan_nearby_crafting_stations():
 	return stations
 
 def process_xp_gain(amount):
-	global player_xp, player_level, player_xp_needed
+	global player_xp, player_level, player_xp_needed, player_max_health, player_current_health
 	player_xp += amount
 	while player_xp>= player_xp_needed:
 		player_xp -= player_xp_needed
 		player_level += 1
 		player_xp_needed = player_level * 100
-
-
+		player_max_health += 2
+		player_current_health = player_max_health
 
 def draw_hud_and_inventories(surface):
+	global shield_slot_rect
 	mouse_pos = pygame.mouse.get_pos()
 	slot_size = 50
 	padding = 10
@@ -1673,6 +1900,9 @@ def draw_hud_and_inventories(surface):
 	pygame.draw.rect(surface, (30,30,30), (xp_x, xp_y,xp_bar_w,xp_bar_h), border_radius=6)
 	xp_pct = min(1.0, player_xp / player_xp_needed)
 	pygame.draw.rect(surface, (0,180,255), (xp_x + 2, xp_y+2, int((xp_bar_w-4) * xp_pct), xp_bar_h-4), border_radius=4)
+
+	lvl_text = ui_font.render(f"LVL {player_level}", True, (255, 255, 255))
+	surface.blit(lvl_text, (xp_x - lvl_text.get_width() - 8, xp_y - 2))
 
 	hp_bar_w, hp_bar_h = 200, 16
 	hp_x = 20
@@ -1754,15 +1984,17 @@ def draw_hud_and_inventories(surface):
 	inv_grid_rects = {}
 	craft_panel_rects = []
 	armor_slot_rect = pygame.Rect(0,0,0,0)
+	global shield_slot_rect
+	shield_slot_rect = pygame.Rect(0,0,0,0)
 	trash_slot_rect = pygame.Rect(0,0,0,0)
 	chest_grid_rects = {}
 
 
 	if is_inventory_open:
-		inv_w = (slot_size * 5) + (padding * 6) + 120
-		inv_h = (slot_size * 4) + (padding * 5) + 60
-		inv_x = (SCREEN_WIDTH // 2) - (inv_w // 2) - 130
-		inv_y = (SCREEN_HEIGHT // 2) - (inv_h // 2) - 30
+		inv_w = INV_W
+		inv_h = INV_H
+		inv_x = INV_X
+		inv_y = INV_Y
 
 		pygame.draw.rect(surface, (35, 35, 35), (inv_x, inv_y, inv_w, inv_h), border_radius=10)
 		pygame.draw.rect(surface, (150, 150, 150), (inv_x, inv_y, inv_w, inv_h), 2, border_radius=10)
@@ -1803,8 +2035,22 @@ def draw_hud_and_inventories(surface):
 		if armor_slot_rect.collidepoint(mouse_pos):
 			hovered_item_name = armor_slot["item"]
 
+		shx = asx
+		shy = asy + slot_size + 24
+		shield_slot_rect = pygame.Rect(shx, shy, slot_size, slot_size)
+		pygame.draw.rect(surface, (35, 30, 25), shield_slot_rect, border_radius=5)
+		pygame.draw.rect(surface, (200, 180, 110), shield_slot_rect, 1 if drag_source_slot == "shield" else 2, border_radius=5)
+		sh_lbl = ui_font.render("SHIELD", True, (200, 180, 110))
+		surface.blit(sh_lbl, (shx + (slot_size//2) - sh_lbl.get_width()//2, shy - 18))
+		if shield_slot["item"] is not None and drag_source_slot != "shield":
+			pygame.draw.rect(surface, shield_slot["color"], (shx + 8, shy + 8, slot_size - 16, slot_size - 16), border_radius=3)
+			scnt = ui_font.render(str(shield_slot["count"]), True, (255,255,255))
+			surface.blit(scnt, (shx + slot_size - scnt.get_width() - 5, shy + slot_size - scnt.get_height() - 3))
+		if shield_slot_rect.collidepoint(mouse_pos):
+			hovered_item_name = shield_slot["item"]		
+
 		tsx = asx
-		tsy = asy + slot_size + 40
+		tsy = shy + slot_size + 40
 		trash_slot_rect = pygame.Rect(tsx, tsy, slot_size, slot_size)
 		pygame.draw.rect(surface, (45, 20, 20), trash_slot_rect, border_radius=5)
 		pygame.draw.rect(surface, (255, 50, 50), trash_slot_rect, 2, border_radius=5)
@@ -1848,18 +2094,23 @@ def draw_hud_and_inventories(surface):
 		
 		active_stations = scan_nearby_crafting_stations()
 		visible_recipes = [r for r in RECIPES if r["station"] is None or r["station"] in active_stations]
-
 		craft_x = inv_x + inv_w + 20
 		craft_w = 280
+		craft_max_h = 500
 		craft_h = 45 + (len(visible_recipes) * 38) + 15
-		pygame.draw.rect(surface, (30,30,30,240), (craft_x, inv_y, craft_w, craft_h), border_radius = 10)
-		pygame.draw.rect(surface, (100,100,100), (craft_x, inv_y, craft_w, craft_h), 2, border_radius=10)
+		pygame.draw.rect(surface, (30,30,30,240), (craft_x, inv_y, craft_w, craft_max_h), border_radius = 10)
+		pygame.draw.rect(surface, (100,100,100), (craft_x, inv_y, craft_w, craft_max_h), 2, border_radius=10)
 		c_title = hud_font.render("Crafting", True, (0, 200, 255))
 		surface.blit(c_title, (craft_x + 15, inv_y + 12))
 		current_inv_counts = get_total_inventory_counts()
+		clip_rect = pygame.Rect(craft_x + 5, inv_y + 40, craft_w - 10, craft_max_h - 50)
+		surface.set_clip(clip_rect)
+
+		current_inv_counts = get_total_inventory_counts()
 
 
-		entry_y = inv_y + 45
+		entry_y = inv_y + 45 + craft_scroll_y
+
 		for recipe in visible_recipes:
 			# station_match = recipe["station"] is None or recipe["station"] in active_stations
 			has_mats = all(current_inv_counts.get(item, 0) >= amt for item, amt in recipe["ingredients"].items())
@@ -1885,6 +2136,8 @@ def draw_hud_and_inventories(surface):
 			surface.blit(req_surface, (craft_x + craft_w - req_surface.get_width() - 15, entry_y + 8))
 
 			entry_y += 38
+
+		surface.set_clip(None)
 
 	if dragged_item is not None:
 		ds = 36
@@ -2081,6 +2334,16 @@ while True:
 		if event.type == pygame.QUIT:
 			pygame.quit()
 			sys.exit()
+
+		# elif event.type == pygame.MOUSEBUTTONDOWN and is_inventory_open:
+			# if is_inventory_open and event.button in (4, 5):
+			# 	craft_panel_rect = pygame.Rect(INV_X + INV_W + 20, INV_Y, 280, 500)
+			# 	if craft_panel_rect.collidepoint(mouse_x, mouse_y):
+			# 		if event.button == 4:
+			# 			craft_scroll_y = min(0, craft_scroll_y + 25)
+			# 		elif event.button == 5:
+			# 			craft_scroll_y = max(-600, craft_scroll_y - 25)
+
 		elif event.type == pygame.KEYDOWN:
 
 			if is_console_open:
@@ -2105,6 +2368,8 @@ while True:
 							inventory_slots[drag_source_slot] = dragged_item
 						elif drag_source_slot == "armor":
 							armor_slot = dragged_item
+						elif drag_source_slot == "shield":
+							shield_slot = dragged_item
 						elif isinstance(drag_source_slot, tuple) and drag_source_slot[0] == "chest":
 							if active_open_chest is not None:
 								active_open_chest.chest_inventory[drag_source_slot[1]] = dragged_item
@@ -2117,7 +2382,19 @@ while True:
 					is_console_open = True
 					print("\n>>> CHEAT SYSTEM LISTENING: Click your terminal window and type your command, then press Enter! <<<")
 		elif event.type == pygame.MOUSEBUTTONDOWN:
-			if event.button == 1 and not is_inventory_open:
+			if is_inventory_open and event.button in (4, 5):
+				craft_panel_rect = pygame.Rect(INV_X + INV_W + 20, INV_Y, 280, 500)
+				if craft_panel_rect.collidepoint(mouse_x, mouse_y):
+					if event.button == 4:
+						craft_scroll_y = min(0, craft_scroll_y + 25)
+					elif event.button == 5:
+						craft_scroll_y = max(-600, craft_scroll_y - 25)
+
+			elif event.button == 3 and not is_inventory_open:
+				if shield_cooldown <= 0:
+					parry_timer = 12
+				is_blocking = True
+			elif event.button == 1 and not is_inventory_open:
 				click_world_x = mouse_x + camera_x
 				click_world_y = mouse_y + camera_y
 				p_cx = player_world_x + (player_width // 2)
@@ -2154,6 +2431,7 @@ while True:
 			if event.button == 1:
 				clicked_slot = None
 				is_armor_click = False
+				is_shield_click = False
 				clicked_chest_slot = None
 
 				for idx, r in hotbar_rects.items():
@@ -2176,42 +2454,47 @@ while True:
 					if armor_slot_rect.collidepoint(mouse_x, mouse_y):
 						is_armor_click = True
 
+					if shield_slot_rect.collidepoint(mouse_x, mouse_y):
+						is_shield_click = True
+
 					if active_open_chest is not None:
 						for idx, r in chest_grid_rects.items():
 							if r.collidepoint(mouse_x, mouse_y):
 								clicked_chest_slot = idx
 								break
-
+					adjusted_craft_panel_rects = []
 					for entry in craft_panel_rects:
 						if entry["rect"].collidepoint(mouse_x,mouse_y) and entry["valid"]:
+							craft_viewport = pygame.Rect(INV_X + INV_W + 20, INV_Y + 40, 280, 450)
+							if craft_viewport.collidepoint(mouse_x, mouse_y) and entry["valid"]:
 
-							rcp = entry["recipe"]
-							if "duration" in rcp:
-								target_station = None	
-								p_cx = player_world_x + (player_width // 2)
-								p_cy = player_world_y + (player_height // 2)
+								rcp = entry["recipe"]
+								if "duration" in rcp:
+									target_station = None	
+									p_cx = player_world_x + (player_width // 2)
+									p_cy = player_world_y + (player_height // 2)
 
-								for struct in active_structures:
-									if struct.type == rcp["station"] and struct.active_production is None:
-										dist = math.hypot(p_cx - struct.rect.centerx, p_cy - struct.rect.centery)
-										if dist <= harvest_range:
-											target_station = struct
-											break
-								if target_station is not None:
-									deduct_crafting_resources(rcp["ingredients"])
-									target_station.active_production = {
-										"result": rcp["result"],
-										"timer": 0,
-										"max_duration": rcp["duration"]
-									}
+									for struct in active_structures:
+										if struct.type == rcp["station"] and struct.active_production is None:
+											dist = math.hypot(p_cx - struct.rect.centerx, p_cy - struct.rect.centery)
+											if dist <= harvest_range:
+												target_station = struct
+												break
+									if target_station is not None:
+										deduct_crafting_resources(rcp["ingredients"])
+										target_station.active_production = {
+											"result": rcp["result"],
+											"timer": 0,
+											"max_duration": rcp["duration"]
+										}
+									else:
+										print("[SYSTEM] no available processin station nearby!")
 								else:
-									print("[SYSTEM] no available processin station nearby!")
-							else:
-								yield_amt = rcp.get("yield", 1)
-								deduct_crafting_resources(rcp["ingredients"])
-								res_meta = ITEM_REGISTRY[rcp["result"]]
-								add_item_to_inventory(rcp["result"], res_meta["color"], 1)
-							break
+									yield_amt = rcp.get("yield", 1)
+									deduct_crafting_resources(rcp["ingredients"])
+									res_meta = ITEM_REGISTRY[rcp["result"]]
+									add_item_to_inventory(rcp["result"], res_meta["color"], 1)
+								break
 
 				if is_armor_click:
 					if dragged_item is None:
@@ -2227,6 +2510,24 @@ while True:
 							if target_slot_data["item"] is not None:
 								dragged_item = target_slot_data
 								drag_source_slot = "armor"
+							else:
+								dragged_item = None
+								drag_source_slot = None
+
+				elif is_shield_click:
+					if dragged_item is None:
+						if shield_slot["item"] is not None:
+							dragged_item = shield_slot.copy()
+							drag_source_slot = "shield"
+							shield_slot = {"item": None, "count": 0, "color": None}
+					else:
+						if "Shield" in dragged_item["item"]:
+							target_slot_data = shield_slot.copy()
+							shield_slot = dragged_item
+
+							if target_slot_data["item"] is not None:
+								dragged_item = target_slot_data
+								drag_source_slot = "shield"
 							else:
 								dragged_item = None
 								drag_source_slot = None
@@ -2265,6 +2566,9 @@ while True:
 						else:
 							dragged_item = None
 							drag_source_slot = None
+		elif event.type == pygame.MOUSEBUTTONUP:
+			if event.button == 3:
+				is_blocking = False
 
 	if is_inventory_open and active_open_chest is not None:
 		p_cx = player_world_x + (player_width // 2)
@@ -2302,6 +2606,18 @@ while True:
 				swing_duration = weapon_meta["swing_duration"]
 			else:
 				swing_duration = 12
+
+			if active_hand_item == "Cobalt Sword":
+				projectiles.append({
+					"x": player_world_x + player_width // 2,
+					"y": player_world_y + player_height // 2,
+					"dx": math.cos(swing_angle) * 11,
+					"dy": math.sin(swing_angle) * 11,
+					"radius": 8,
+					"color": (135, 206, 250),
+					"is_player_owned": True,
+					"damage": 10
+				})
 
 		if active_hand_item and ITEM_REGISTRY[active_hand_item]["is_structure"]:
 			snap_x = (click_world_x // TILE_SIZE) * TILE_SIZE
@@ -2409,6 +2725,8 @@ while True:
 								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(3, 5))
 								process_xp_gain(XP_REWARDS["frost_wolf"])
 							elif isinstance(mob, IceGolemNPC):
+								if random.random() < 0.25:
+									add_item_to_inventory("Golem Core", ITEM_REGISTRY["Golem Core"]["color"], 1)
 								add_item_to_inventory("Rimefrost Cobalt Ore", ITEM_REGISTRY["Rimefrost Cobalt Ore"]["color"], random.randint(3, 6))
 								process_xp_gain(XP_REWARDS["ice_golem"])
 						else:
@@ -2463,6 +2781,10 @@ while True:
 							"type": active_harvest_target.type,
 							"timer": RESOURCE_SPAWN_CONFIG[current_biome_index][active_harvest_target.type]["respawn_time"]
 						})
+
+				if active_harvest_target.type == "rimefrost_cobalt_ore" and random.random() < 0.15:
+					active_mobs.append(IceGolemNPC(active_harvest_target.rect.x, active_harvest_target.rect.y))
+					print("A golem has been awaken.")
 
 				blueprint_list = world_blueprints[current_biome_index]
 				for bp in blueprint_list:
@@ -2591,6 +2913,13 @@ while True:
 			player_world_x = WORLD_WIDTH - player_width - 10
 		else:
 			player_world_x = 0
+
+	if parry_timer > 0:
+		parry_timer -= 1
+	if shield_cooldown > 0:
+		shield_cooldown -= 1
+	if parry_splash_timer > 0:
+		parry_splash_timer -= 1
 
 	if player_damage_timer > 0:
 		player_damage_timer -= 1
@@ -2746,7 +3075,7 @@ while True:
 	near_heater = False
 	for struct in active_structures:
 		if struct.type in ["furnace", "coal_kiln"]:
-			dist = math.hypot(player_cx - struct.rect.centerx, player_cy = struct.rect.centery)
+			dist = math.hypot(player_cx - struct.rect.centerx, player_cy - struct.rect.centery)
 			if dist <= 180:
 				near_heater = True
 				break
@@ -2805,6 +3134,37 @@ while True:
 	for mob in active_mobs:
 		mob.draw(screen, camera_x, camera_y)
 
+	for proj in list(projectiles):
+		proj["x"] += proj["dx"]
+		proj["y"] += proj["dy"]
+
+		screen_proj_x = proj["x"] - camera_x
+		screen_proj_y = proj["y"] - camera_y
+		if 0 <= screen_proj_x <= SCREEN_WIDTH and 0 <= screen_proj_y <= SCREEN_HEIGHT:
+			pygame.draw.circle(screen, proj["color"], (int(screen_proj_x), int(screen_proj_y)), proj["radius"])
+			pygame.draw.circle(screen, (255, 255, 255), (int(screen_proj_x), int(screen_proj_y)), proj["radius"], 1)
+		else:
+			projectiles.remove(proj)
+			continue
+
+		proj_rect = pygame.Rect(proj["x"] - proj["radius"], proj["y"] - proj["radius"], proj["radius"] * 2, proj["radius"] * 2)
+
+		if proj["is_player_owned"]:
+			for mob in list(active_mobs):
+				if proj_rect.colliderect(mob.rect):
+					mob.health -= proj["damage"]
+					mob.damage_timer = 15
+					mob.freeze_ticks = 4
+					if proj in projectiles:
+						projectiles.remove(proj)
+					break
+		else:
+			player_r = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+			if proj_rect.colliderect(player_r):
+				damage_player(proj["damage"], None)
+				if proj in projectiles:
+					projectiles.remove(proj)
+
 	process_resource_respawns()
 	player_screen_x = player_world_x - camera_x
 	player_screen_y = player_world_y - camera_y
@@ -2821,6 +3181,26 @@ while True:
 		red_mask.fill((255, 0, 0, 140))
 		player_surf.blit(red_mask, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
 	screen.blit(player_surf, (player_screen_x, player_screen_y))
+
+	if shield_slot["item"] == "Iron Shield":
+		mx, my = pygame.mouse.get_pos()
+		p_center_x = player_screen_x + player_width // 2
+		p_center_y = player_screen_y + player_height // 2
+		angle_shield = math.atan2(my - p_center_y, mx - p_center_x)
+		
+		sh_dist = 28
+		sh_draw_x = p_center_x + math.cos(angle_shield) * sh_dist
+		sh_draw_y = p_center_y + math.sin(angle_shield) * sh_dist
+		
+
+		shield_surf = pygame.Surface((28, 12), pygame.SRCALPHA)
+
+		sh_col = (135, 206, 250) if parry_timer > 0 else (0, 191, 255) if is_blocking else (180, 185, 190)
+		pygame.draw.rect(shield_surf, sh_col, (0, 0, 28, 12), border_radius=3)
+		pygame.draw.rect(shield_surf, (255, 255, 255), (0, 0, 28, 12), 1, border_radius=3)
+
+		rotated_shield = pygame.transform.rotate(shield_surf, -math.degrees(angle_shield) - 90)
+		screen.blit(rotated_shield, (sh_draw_x - rotated_shield.get_width() // 2, sh_draw_y - rotated_shield.get_height() // 2))
 
 	if is_swinging:
 			active_hand_item = inventory_slots[selected_hotbar_slot]["item"]
@@ -2967,6 +3347,10 @@ while True:
 			txt_surf = ui_font.render(f"{label}: {val}", True, (255, 255, 255))
 			screen.blit(txt_surf, (px + 10, line_y))
 			line_y += 18
+
+	if parry_splash_timer > 0:
+		sh_text = hud_font.render(parry_splash_text, True, (0, 191, 255) if parry_splash_text == "BLOCKED!" else (0, 255, 150))
+		screen.blit(sh_text, (player_screen_x + player_width // 2 - sh_text.get_width() // 2, player_screen_y - 28))
 
 	hotbar_rects, inv_grid_rects, craft_panel_rects, armor_slot_rect, trash_slot_rect, chest_grid_rects = draw_hud_and_inventories(screen)
 	pygame.display.flip()
