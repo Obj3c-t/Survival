@@ -1174,7 +1174,7 @@ class SlimeNPC:
 			self.dy *= 0.85
 
 		if self.dx != 0:
-			self.rect.x = self.dx
+			self.rect.x += self.dx
 			for obj in active_resources + active_structures:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 						continue
@@ -1182,7 +1182,7 @@ class SlimeNPC:
 					if self.dx > 0: self.rect.right = obj.rect.left
 					if self.dx < 0: self.rect.left = obj.rect.right
 		if self.dy != 0:
-			self.rect.y = self.dy
+			self.rect.y += self.dy
 			for obj in active_resources + active_structures:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 						continue
@@ -1368,8 +1368,8 @@ class IceGolemNPC:
 	def __init__(self, world_x, world_y):
 		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE *1.5, TILE_SIZE * 1.5)
 		self.color = (130, 190, 230)
-		self.health = 500
-		self.max_health = 300
+		self.health = 1000
+		self.max_health = 1000
 		self.damage_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
@@ -1402,6 +1402,9 @@ class IceGolemNPC:
 			self.state = "walk"
 			self.state_timer = 0
 			return
+
+		self.state_timer +=1
+		self.throw_cooldown -= 1
 
 		if abs(self.knockback_dx) > 0.1:
 			self.rect.x += int(self.knockback_dx * 0.5)
@@ -1441,6 +1444,9 @@ class IceGolemNPC:
 				self.state_timer = 0
 				if dist <= self.roar_radius:
 					damage_player(40, self)
+					global player_vel_x, player_vel_y
+					player_vel_x = math.cos(angle) * 32
+					player_vel_y = math.sin(angle) * 32
 
 		elif self.state == "snowball_charge":
 			dx = math.cos(self.charge_angle) * (self.speed * 6.5)
@@ -1485,7 +1491,8 @@ class IceGolemNPC:
 							"radius": 14,
 							"color": (160, 210, 245),
 							"is_player_owned": False,
-							"damage": 22
+							"damage": 22,
+							"lifetime": 45
 							})
 
 		if dx != 0:
@@ -1527,7 +1534,7 @@ class IceGolemNPC:
 		if -w <= screen_x <= SCREEN_WIDTH and -h <= screen_y <= SCREEN_HEIGHT:
 			if self.state == "roar_windup":
 				warn_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-				alpha = 80 + int(math.sin(pygame.get_ticks() * 0.015) * 50)
+				alpha = 80 + int(math.sin(pygame.time.get_ticks() * 0.015) * 50)
 				pygame.draw.circle(warn_surf, (255, 0, 0, alpha), (int(self.rect.centerx - camera_x), int(self.rect.centery - camera_y)), self.roar_radius)
 				pygame.draw.circle(warn_surf, (255, 0, 0, 240), (int(self.rect.centerx - camera_x), int(self.rect.centery - camera_y)), self.roar_radius, 3)
 				surface.blit(warn_surf, (0,0))
@@ -1539,7 +1546,7 @@ class IceGolemNPC:
 			mob_surf = pygame.Surface((w, h), pygame.SRCALPHA)
 			if self.state == "snowball_charge":
 				angle_rot = (pygame.time.get_ticks() // 4) % 360
-				pygame.draw.circle(mob_surf, (240, 245, 255), (w//2, h//2), w//2, border_radius = 0)
+				pygame.draw.circle(mob_surf, (240, 245, 255), (w//2, h//2), w//2)
 				pygame.draw.circle(mob_surf, (150, 200, 240), (w//2, h//2), w//2, 4)
 			else:
 				if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
@@ -1569,10 +1576,10 @@ def damage_player(amount, attacker):
 		parry_splash_timer = 45
 		parry_splash_text = "PARRIED"
 
-		attacker.knockback_dx = -attacker.knockback_dx * 1.5
-		attacker.knockback_dy = -attacker.knockback_dy * 1.5
+		attacker.knockback_dx = -attacker.knockback_dx * 2.0
+		attacker.knockback_dy = -attacker.knockback_dy * 2.0
 		if hasattr(attacker, "stun_timer"):
-			attacker.stun_timer = 90
+			attacker.stun_timer = 30
 			attacker.damage_timer = 20
 		return
 
@@ -1580,6 +1587,12 @@ def damage_player(amount, attacker):
 		parry_splash_timer = 30
 		parry_splash_text = "BLOCKED"
 		shield_cooldown = 420
+		if attacker:
+			angle = math.atan2(player_world_y - attacker.rect.y, player_world_x - attacker.rect.x)
+			player_vel_x = math.cos(angle) * 16
+			player_vel_y = math.sin(angle) * 16
+			attacker.knockback_dx = -math.cos(angle) * 16
+			attacker.knockback_dy = -math.sin(angle) * 16
 		return
 
 	if player_damage_timer <= 0:
@@ -1598,6 +1611,24 @@ def damage_player(amount, attacker):
 		player_current_health -= final_damage
 		player_damage_timer = 30
 		hit_pause_frames(3)
+
+		if attacker:
+			angle = math.atan2(player_world_y - attacker.rect.y, player_world_x - attacker.rect.x)
+			player_vel_x = math.cos(angle) * 12
+			player_vel_y = math.sin(angle) * 12
+
+def has_line_of_sight(p1_x, p1_y, p2_x, p2_y):
+	for i in range(1, 6):
+		t = i / 6
+		check_x = p1_x + (p2_x - p1_x) * t
+		check_y = p1_y + (p2_y - p1_y) * t
+
+		for s in active_structures:
+			if s.type == "door_wood" and getattr(s, "is_open", False):
+				continue
+			if s.rect.collidepoint(check_x, check_y):
+				return False
+	return True
 
 # PLAYER INIT
 player_heal_cooldown = 0
@@ -1638,6 +1669,7 @@ is_swinging = False
 swing_timer = 0
 swing_duration = 12
 swing_angle = 0
+swing_direction = 1
 
 entity_respawn_timer = 0
 MAX_COWS_IN_FOREST = 20
@@ -1922,6 +1954,18 @@ def draw_hud_and_inventories(surface):
 		pygame.draw.rect(surface, (0,160,255), (cold_x + 2, cold_y + 2, int((cold_bar_w - 4) * cold_pct), cold_bar_h - 4), border_radius=2)
 	cold_txt = ui_font.render(f"COLD: {int(cold_exposure)}%", True, (160, 220, 255))
 	surface.blit(cold_txt, (cold_x + 5, cold_y - 1))
+
+	if shield_cooldown > 0 or parry_timer > 0:
+		cd_bar_w, cd_bar_h = 200 ,8
+		cd_x = 20
+		cd_y = 58
+		pygame.draw.rect(surface, (40, 40, 40), (cd_x, cd_y, cd_bar_w, cd_bar_h), border_radius=2)
+		if parry_timer > 0:
+			pct = parry_timer / 12
+			pygame.draw.rect(surface, (0, 255, 150), (cd_x + 1, cd_y + 1, int((cd_bar_w - 2) * pct),cd_bar_h - 2), border_radius=2)
+		elif shield_cooldown > 0:
+			pct = shield_cooldown > 420
+			pygame.draw.rect(surface, (0, 191, 255), (cd_x +1, cd_y + 1, int((cd_bar_w - 2) * pct), cd_bar_h - 2), border_radius=2)
 
 	p_cx = player_world_x + (player_width // 2)
 	p_cy = player_world_y + (player_height // 2)
@@ -2587,6 +2631,7 @@ while True:
 				drag_source_slot = None
 			active_open_chest = None
 	mouse_pressed = pygame.mouse.get_pressed()
+
 	if mouse_pressed[0] and not is_inventory_open and dragged_item is None:
 		click_world_x = mouse_x + camera_x
 		click_world_y = mouse_y + camera_y
@@ -2600,6 +2645,8 @@ while True:
 			is_swinging = True
 			swing_timer = 0
 			swing_angle = math.atan2(click_world_y - player_center_y, click_world_x - player_center_x)
+
+			swing_direction *= -1
 
 			weapon_meta = ITEM_REGISTRY.get(active_hand_item, ITEM_REGISTRY["Fists"])
 			if "swing_duration" in weapon_meta:
@@ -2616,7 +2663,8 @@ while True:
 					"radius": 8,
 					"color": (135, 206, 250),
 					"is_player_owned": True,
-					"damage": 10
+					"damage": 10,
+					"lifetime": 45
 				})
 
 		if active_hand_item and ITEM_REGISTRY[active_hand_item]["is_structure"]:
@@ -2657,91 +2705,93 @@ while True:
 
 		for mob in list(active_mobs):
 			if attack_hitbox.colliderect(mob.rect):
-				if swing_timer == 1:
-					DAMAGE_TABLE = {
-						"Fists": 3,
-						"Wooden Sword": 5,
-						"Stone Sword": 8,
-						"Stone Pickaxe": 4,
-						"Copper Sword": 11,
-						"Iron Sword": 15,
-						"Solarite Sword": 19,
-						"Cobalt Sword": 23
-					}
-					# base_attack_damage = 5
-					# if active_hand_item == "Wooden Sword":
-					# 	base_attack_damage = 10
-					# if active_hand_item == "Stone Sword":
-					# 	base_attack_damage = 20
-					# if active_hand_item == "Stone Pickaxe":
-					# 	base_attack_damage = 7
-					base_attack_damage = DAMAGE_TABLE.get(active_hand_item, 3)
-					is_critical_hit = False
-					if active_hand_item == "Copper Sword":
-						if random.random() <= 0.20:
-							base_attack_damage *= 2
-							is_critical_hit = True
+				if has_line_of_sight(player_world_x, player_world_y, mob.rect.x, mob.rect.y):
+					if swing_timer == 1:
+						DAMAGE_TABLE = {
+							"Fists": 3,
+							"Wooden Sword": 5,
+							"Stone Sword": 8,
+							"Stone Pickaxe": 4,
+							"Copper Sword": 11,
+							"Iron Sword": 15,
+							"Solarite Sword": 19,
+							"Cobalt Sword": 23
+						}
+						# base_attack_damage = 5
+						# if active_hand_item == "Wooden Sword":
+						# 	base_attack_damage = 10
+						# if active_hand_item == "Stone Sword":
+						# 	base_attack_damage = 20
+						# if active_hand_item == "Stone Pickaxe":
+						# 	base_attack_damage = 7
+						base_attack_damage = DAMAGE_TABLE.get(active_hand_item, 3)
+						is_critical_hit = False
+						if active_hand_item == "Copper Sword":
+							if random.random() <= 0.20:
+								base_attack_damage *= 2
+								is_critical_hit = True
 
-					mob.health -= base_attack_damage
-					mob.damage_timer = 20
-					# mob.rect.x += math.cos(swing_angle) * 24
-					# mob.rect.y += math.sin(swing_angle) * 24
-					kb_strength = 32 if active_hand_item == "Iron Sword" else 18
-					mob.knockback_dx = math.cos(swing_angle) * kb_strength
-					mob.knockback_dy = math.sin(swing_angle) * kb_strength
-					if active_hand_item == "Solarite Sword":
-						mob.burn_ticks = 4
-						mob.burn_timer = 0
+						mob.health -= base_attack_damage
+						mob.damage_timer = 20
+						# mob.rect.x += math.cos(swing_angle) * 24
+						# mob.rect.y += math.sin(swing_angle) * 24
+						kb_strength = 32 if active_hand_item == "Iron Sword" else 18
+						mob.knockback_dx = math.cos(swing_angle) * kb_strength
+						mob.knockback_dy = math.sin(swing_angle) * kb_strength
+						if active_hand_item == "Solarite Sword":
+							mob.burn_ticks = 4
+							mob.burn_timer = 0
 
-					if active_hand_item == "Cobalt Sword":
-						mob.freeze_ticks = 8
-						mob.freeze_timer= 0
+						if active_hand_item == "Cobalt Sword":
+							mob.freeze_ticks = 8
+							mob.freeze_timer= 0
 
-					if is_critical_hit:
-						hit_pause_frames(3)
-					else:
-						hit_pause_frames(6)
-					if not mob.is_hostile:
-						mob.start_panic(player_world_x, player_world_y)
-					
-					if mob.health <= 0:
-						if mob.is_hostile:
-							if isinstance(mob, ScorpionNPC):
-								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
-								process_xp_gain(XP_REWARDS["scorpion"])
-							elif isinstance(mob, BeetleNPC):
-								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
-								process_xp_gain(XP_REWARDS["beetle"])
-							elif isinstance(mob, ZombieNPC):
-								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 3))
-								process_xp_gain(XP_REWARDS["zombie"])
-							elif isinstance(mob, SkeletonNPC):
-								add_item_to_inventory("Bone", ITEM_REGISTRY["Bone"]["color"], random.randint(1, 3))
-								process_xp_gain(XP_REWARDS["skeleton"])
-							elif isinstance(mob, SlimeNPC):
-								add_item_to_inventory("Slime Gel", ITEM_REGISTRY["Slime Gel"]["color"], random.randint(2, 4))
-								process_xp_gain(XP_REWARDS["slime"])
-							elif isinstance(mob, FrostWolfNPC):
-								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(3, 5))
-								process_xp_gain(XP_REWARDS["frost_wolf"])
-							elif isinstance(mob, IceGolemNPC):
-								if random.random() < 0.25:
-									add_item_to_inventory("Golem Core", ITEM_REGISTRY["Golem Core"]["color"], 1)
-								add_item_to_inventory("Rimefrost Cobalt Ore", ITEM_REGISTRY["Rimefrost Cobalt Ore"]["color"], random.randint(3, 6))
-								process_xp_gain(XP_REWARDS["ice_golem"])
+						if is_critical_hit:
+							hit_pause_frames(3)
 						else:
-							add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
-							process_xp_gain(XP_REWARDS["cow"])
-						active_mobs.remove(mob)
+							hit_pause_frames(6)
+						if not mob.is_hostile:
+							mob.start_panic(player_world_x, player_world_y)
+						
+						if mob.health <= 0:
+							if mob.is_hostile:
+								if isinstance(mob, ScorpionNPC):
+									add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
+									process_xp_gain(XP_REWARDS["scorpion"])
+								elif isinstance(mob, BeetleNPC):
+									add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
+									process_xp_gain(XP_REWARDS["beetle"])
+								elif isinstance(mob, ZombieNPC):
+									add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 3))
+									process_xp_gain(XP_REWARDS["zombie"])
+								elif isinstance(mob, SkeletonNPC):
+									add_item_to_inventory("Bone", ITEM_REGISTRY["Bone"]["color"], random.randint(1, 3))
+									process_xp_gain(XP_REWARDS["skeleton"])
+								elif isinstance(mob, SlimeNPC):
+									add_item_to_inventory("Slime Gel", ITEM_REGISTRY["Slime Gel"]["color"], random.randint(2, 4))
+									process_xp_gain(XP_REWARDS["slime"])
+								elif isinstance(mob, FrostWolfNPC):
+									add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(3, 5))
+									process_xp_gain(XP_REWARDS["frost_wolf"])
+								elif isinstance(mob, IceGolemNPC):
+									if random.random() < 0.25:
+										add_item_to_inventory("Golem Core", ITEM_REGISTRY["Golem Core"]["color"], 1)
+									add_item_to_inventory("Rimefrost Cobalt Ore", ITEM_REGISTRY["Rimefrost Cobalt Ore"]["color"], random.randint(3, 6))
+									process_xp_gain(XP_REWARDS["ice_golem"])
+							else:
+								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
+								process_xp_gain(XP_REWARDS["cow"])
+							active_mobs.remove(mob)
 
 
 		hovered_res = None
 		for res in active_resources:
 			if res.rect.collidepoint(click_world_x, click_world_y):
-				dist = math.hypot(player_center_x - res.rect.centerx, player_center_y - res.rect.centery)
-				if dist <= harvest_range:
-					hovered_res = res
-					break
+				if has_line_of_sight(player_world_x, player_world_y, mob.rect.x, mob.rect.y):
+					dist = math.hypot(player_center_x - res.rect.centerx, player_center_y - res.rect.centery)
+					if dist <= harvest_range:
+						hovered_res = res
+						break
 		if hovered_res is not None:
 			if active_harvest_target != hovered_res:
 				active_harvest_target = hovered_res
@@ -3048,7 +3098,7 @@ while True:
 		entity_respawn_timer = 0
 
 	if current_biome_index == 1:
-		has_protection = armor_slot["item"] == "Leather Armor"
+		has_protection = armor_slot["item"] in ["Leather Armor", "Iron Armor", "Solarite Armor", "Cobalt Armor"]
 		if not has_protection:
 			desert_damage_timer += 1
 			if desert_damage_timer >= 60:
@@ -3137,6 +3187,12 @@ while True:
 	for proj in list(projectiles):
 		proj["x"] += proj["dx"]
 		proj["y"] += proj["dy"]
+		proj["lifetime"] -= 1
+
+		if proj["lifetime"] <= 0:
+			if proj in projectiles:
+				projectiles.remove(proj)
+			continue
 
 		screen_proj_x = proj["x"] - camera_x
 		screen_proj_y = proj["y"] - camera_y
@@ -3210,6 +3266,10 @@ while True:
 				w_data = ITEM_REGISTRY["Fists"]
 
 			anim_pct = swing_timer / swing_duration
+			if anim_pct < 0.5:
+				eased_pct = 4 * anim_pct * anim_pct * anim_pct
+			else:
+				eased_pct = 1 - math.pow(-2 * anim_pct + 2, 3) / 2
 			
 			
 			duration = w_data["swing_duration"]
@@ -3226,9 +3286,13 @@ while True:
 			
 			steps = min(5, swing_timer + 1)
 			for i in range(steps):
-				
 				past_pct = (swing_timer - i) / swing_duration
-				past_angle = swing_angle - (arc_range / 2) + (arc_range * past_pct)
+				if past_pct < 0.5:
+					past_eased = 4 * past_pct * past_pct * past_pct
+				else:
+					past_eased = 1 - math.pow(-2 * past_pct + 2, 3) / 2
+
+				past_angle = swing_angle + (swing_direction * (-arc_range / 2 + (arc_range * past_eased)))
 				
 				tx = p_center_x + math.cos(past_angle) * length
 				ty = p_center_y + math.sin(past_angle) * length
@@ -3242,7 +3306,7 @@ while True:
 				pygame.draw.polygon(trail_surf, t_color, trail_points)
 				
 				
-				lead_angle = swing_angle - (arc_range / 2) + (arc_range * anim_pct)
+				lead_angle = swing_angle + (swing_direction * (-arc_range / 2 + (arc_range * eased_pct)))
 				lx = p_center_x + math.cos(lead_angle) * length
 				ly = p_center_y + math.sin(lead_angle) * length
 				pygame.draw.line(trail_surf, (255, 255, 255, 240), (p_center_x, p_center_y), (lx, ly), 3)
