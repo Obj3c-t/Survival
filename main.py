@@ -21,7 +21,7 @@ TILE_SIZE = BASE_TILE_SIZE * TILE_SCALE
 WORLD_WIDTH = SCREEN_WIDTH * 12
 WORLD_HEIGHT = SCREEN_HEIGHT * 12
 
-screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT))
+screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT), pygame.DOUBLEBUF | pygame.HWACCEL)
 
 pygame.display.set_caption("FORGEBOUND")
 
@@ -31,7 +31,8 @@ clock = pygame.time.Clock()
 biomes = [
 	{"name": "Forest", "grass": (101, 146, 90)},
 	{"name": "Desert", "grass": (225, 191, 117)},
-	{"name": "Glacial Tundra","grass": (210, 233, 240)}
+	{"name": "Glacial Tundra","grass": (210, 233, 240)},
+	{"name": "Jungle", "grass": (34, 110, 45)}
 ]
 INV_SLOT_SIZE = 50
 INV_PADDING = 10
@@ -41,7 +42,7 @@ INV_X = (SCREEN_WIDTH // 2) - (INV_W // 2) - 130
 INV_Y = (SCREEN_HEIGHT // 2) - (INV_H // 2) - 30
 current_biome_index = 0
 world_blueprints = {}
-structure_blueprints = {0: [], 1: [], 2:[]}
+structure_blueprints = {0: [], 1: [], 2:[], 3: []}
 active_resources = []
 
 active_structures = []
@@ -56,6 +57,8 @@ XP_REWARDS = {
 	"iron_ore": 75,
 	"solarite_ore": 90,
 	"rimfrost_cobalt_ore": 110,
+	"verdant_ore": 130,
+	"jungle_vine":15,
 	"cow": 30,
 	"scorpion": 60,
 	"beetle": 45,
@@ -64,7 +67,9 @@ XP_REWARDS = {
 	"skeleton": 55,
 	"slime": 25,
 	"frost_wolf": 75,
-	"ice_golem": 120
+	"ice_golem": 120,
+	"hornet": 80,
+	"spore_trap": 100
 }
 
 respawn_queue = []
@@ -89,6 +94,14 @@ RESOURCE_SPAWN_CONFIG =  {
 		"tree": {"respawn_time": 1500, "spawn_chance": 0.40, "max_per_biome": 20},
 		"rock": {"respawn_time": 1800, "spawn_chance": 0.40, "max_per_biome": 15},
 		"rimefrost_cobalt_ore": {"respawn_time": 4200, "spawn_chance": 0.20, "max_per_biome": 12}
+	},
+	3: {
+		"tree": {"respawn_time": 1000, "spawn_chance": 0.50, "max_per_biome": 30},
+		"jungle_vine": {"respawn_time": 600, "spawn_chance": 0.65, "max_per_biome": 35},
+		"rock": {"respawn_time": 1800, "spawn_chance": 0.30, "max_per_biome": 10},
+		"verdant_ore": {"respawn_time": 3800, "spawn_chance": 0.25, "max_per_biome": 15},
+		"jungle_herb": {"respawn_time": 1200, "spawn_chance": 0.45, "max_per_biome": 20},
+		"jungle_spore": {"respawn_time": 1500, "spawn_chance": 0.35, "max_per_biome": 15}
 	}
 	
 }
@@ -100,24 +113,33 @@ ITEM_REGISTRY = {
 	"Iron Ore": {"color": (165, 42, 42), "is_structure": False, "structure_type": None},
 	"Solarite Ore": {"color": (255, 140, 0), "is_structure": False, "structure_type": None},
 	"Rimefrost Cobalt Ore": {"color": (70, 130, 180), "is_structure": False, "structure_type": None},
+	"Verdant Ore":{"color": (46, 139, 87), "is_structure": False, "structure_type": None},
 	"Copper Bar": {"color": (212, 115, 71), "is_structure": False, "structure_type": None},
 	"Iron Bar": {"color": (210, 210, 210), "is_structure": False, "structure_type": None},
 	"Solarite Bar": {"color": (255, 69, 0), "is_structure": False, "structure_type": None},
 	"Rimefrost Cobalt Bar": {"color": (100, 149, 237), "is_structure": False, "structure_type": None},
+	"Verdant Steel Bar": {"color": (50, 205, 50), "is_structure": False, "structure_type": None},
 	"Leather": {"color": (150, 90, 50), "is_structure": False, "structure_type": None},
 	"Leather Armor": {"color": (100, 65, 35), "is_structure": False, "structure_type": None},
 	"Iron Armor": {"color": (140, 145, 150), "is_structure": False, "structure_type": None},
 	"Solarite Armor": {"color": (245, 120, 20), "is_structure": False, "structure_type": None},
 	"Cobalt Armor": {"color": (60, 140, 240), "is_structure": False, "structure_type": None},
+	"Verdant Armor": {"color": (34, 139, 34), "is_structure": False, "structure_type": None},
 	"Iron Shield": {"color": (175, 180, 185), "is_structure": False, "structure_type": None},
 	"Golem Core": {"color": (0, 190, 255), "is_structure": False, "structure_type": None},
 	"Thermal Lantern": {"color": (255, 180, 0), "is_structure": False, "structure_type": None},
+	"Jungle Herb": {"color": (255, 105, 180), "is_structure": False, "structure_type": None},
+	"Jungle Spore": {"color": (0, 255, 127), "is_structure": False, "structure_type": None},
+	"Antidote": {"color": (186, 85, 211), "is_structure": False, "structure_type": None},
+	"Healing Potion": {"color": (220, 20, 60), "is_structure": False, "structure_type": None},
+	"Adrenaline Elixir": {"color": (255, 215, 0), "is_structure": False, "structure_type": None},
 	"Bone": {"color": (230, 225, 210), "is_structure": False, "structure_type": None},
 	"Slime Gel": {"color": (80, 210, 120), "is_structure": False, "structure_type": None},
 	"Wooden Wall": {"color": (110, 70, 40), "is_structure": True, "structure_type": "wall_wood"},
 	"Stone Wall": {"color": (100, 100, 105), "is_structure": True, "structure_type": "wall_stone"},
 	"Wooden Door": {"color": (150, 100, 50), "is_structure": True, "structure_type": "door_wood"},
 	"Bed": {"color": (200, 50, 50), "is_structure": True, "structure_type": "bed"},
+	"Alchemist Table": {"color": (148, 0, 211), "is_structure": True, "structure_type": "alchemist_table"},
 	"Fists": {
 		"color": (240,240,240), "is_structure": False, "structure_type": None,
 		"swing_duration": 10, "arc_range": math.pi / 2, "blade_length":35, "trail_color": (200,220,255,150)
@@ -148,7 +170,11 @@ ITEM_REGISTRY = {
 	},
 	"Cobalt Sword": {
 		"color": (65, 105, 225), "is_structure": False, "structure_type": None,
-		"swing_duration": 14, "arc_range": math.pi * 0.85, "blade_length": 80, "trail_color": (100, 200, 255, 200)
+		"swing_duration": 14, "arc_range": math.pi * 0.85, "blade_length": 80, "trail_color": (100, 200, 255, 200) # shoots projectiles
+	},
+	"Verdant Sword": {
+		"color": (50, 205, 50), "is_structure": False, "structure_type": None,
+		"swing_duration": 11, "arc_range": math.pi * 0.9, "blade_length": 82, "trail_color": (100, 255, 150, 210) # lifesteal and quick swing sped
 	},
 	"Copper Pickaxe": {
 		"color": (212, 115, 71), "is_structure": False, "structure_type": None,
@@ -166,6 +192,10 @@ ITEM_REGISTRY = {
 		"color": (70, 130, 180), "is_structure": False, "structure_type": None,
 		"swing_duration": 15, "arc_range": math.pi * 0.6, "blade_length": 62, "trail_color": (100, 220, 255, 180)
 	},
+	"Verdant Pickaxe": {
+		"color": (34, 139, 34), "is_structure": False, "structure_type": None,
+		"swing_duration": 12, "arc_range": math.pi * 0.65, "blade_length": 64, "trail_color": (120, 255, 120, 190)
+	},
 	"Workbench": {"color": (160, 110, 60), "is_structure": True, "structure_type": "workbench"},
 	"Coal Kiln": {"color": (40,40,45), "is_structure": True, "structure_type": "coal_kiln"},
 	"Furnace": {"color": (80, 80, 80), "is_structure": True, "structure_type": "furnace"},
@@ -177,15 +207,20 @@ ITEM_REGISTRY = {
 RECIPES = [
 	{"result": "Workbench", "ingredients": {"Wood": 10}, "station": None},
 	{"result": "Coal Kiln", "ingredients": {"Stone": 20, "Wood": 10}, "station": "workbench"},
-	{"result": "Furnace", "ingredients": {"Stone": 25, "Wood": 5}, "station": "coal_kiln"},
+	{"result": "Furnace", "ingredients": {"Stone": 25, "Wood": 5}, "station": "workbench"},
 	{"result": "Anvil", "ingredients": {"Iron Bar": 5}, "station": "workbench"},
+	{"result": "Alchemist Table", "ingredients": {"Wood": 8, "Slime Gel": 4}, "station": "workbench"},
 	{"result": "Stone Pickaxe", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
 	{"result": "Leather Armor", "ingredients": {"Leather": 10}, "station": "workbench"},
 	{"result": "Iron Armor", "ingredients": {"Iron Bar": 15}, "station": "workbench"},
 	{"result": "Solarite Armor", "ingredients": {"Solarite Bar": 12, "Coal": 4}, "station": "workbench"},
 	{"result": "Cobalt Armor", "ingredients": {"Rimefrost Cobalt Bar": 10}, "station": "workbench"},
+	{"result": "Verdant Armor", "ingredients": {"Verdant Steel Bar": 12}, "station": "workbench"},
 	{"result": "Iron Shield", "ingredients": {"Iron Bar": 8, "Wood": 4}, "station": "workbench"},
 	{"result": "Thermal Lantern", "ingredients": {"Solarite Bar": 2, "Iron Bar": 4, "Coal": 5}, "station": "anvil"},
+	{"result": "Antidote", "ingredients": {"Jungle Herb": 2, "Slime Gel": 1}, "station": "alchemist_table"},
+	{"result": "Healing Potion", "ingredients": {"Jungle Herb": 2, "Jungle Spore": 1}, "station": "alchemist_table"},
+	{"result": "Adrenaline Elixir", "ingredients": {"Jungle Spore": 3, "Wood": 2}, "station": "alchemist_table"},
 	{"result": "Wooden Sword", "ingredients": {"Wood": 6}, "station": None},
 	{"result": "Stone Sword", "ingredients": {"Wood": 4, "Stone": 8}, "station": "workbench"},
 	{"result": "Chest", "ingredients": {"Wood": 15}, "station": "workbench"},
@@ -198,14 +233,17 @@ RECIPES = [
 	{"result": "Iron Bar", "ingredients": {"Iron Ore": 3, "Coal": 1}, "station": "furnace", "duration": 300},
 	{"result": "Solarite Bar", "ingredients": {"Solarite Ore": 3, "Coal": 2}, "station": "furnace", "duration": 420},
 	{"result": "Rimefrost Cobalt Bar", "ingredients": {"Rimefrost Cobalt Ore": 3, "Coal": 2}, "station": "furnace", "duration": 500},
+	{"result": "Verdant Steel Bar", "ingredients": {"Verdant Ore": 3, "Coal": 2}, "station": "furnace", "duration": 460},
 	{"result": "Copper Sword", "ingredients": {"Wood": 2, "Copper Bar": 5}, "station": "anvil"},
 	{"result": "Iron Sword", "ingredients": {"Wood": 2, "Iron Bar": 5}, "station": "anvil"},
 	{"result": "Solarite Sword", "ingredients": {"Wood": 2, "Solarite Bar": 6}, "station": "anvil"},
 	{"result": "Cobalt Sword", "ingredients": {"Wood": 3, "Rimefrost Cobalt Bar": 5}, "station": "anvil"},
+	{"result": "Verdant Sword", "ingredients": {"Wood": 3, "Verdant Steel Bar": 5}, "station": "anvil"},
 	{"result": "Copper Pickaxe", "ingredients": {"Wood": 4, "Copper Bar": 4}, "station": "anvil"},
 	{"result": "Iron Pickaxe", "ingredients": {"Wood": 4, "Iron Bar": 4}, "station": "anvil"},
 	{"result": "Solarite Pickaxe", "ingredients": {"Wood": 4, "Solarite Bar": 5}, "station": "anvil"},
 	{"result": "Cobalt Pickaxe", "ingredients": {"Wood": 4, "Rimefrost Cobalt Bar": 4}, "station": "anvil"},
+	{"result": "Verdant Pickaxe", "ingredients": {"Wood": 4, "Verdant Steel Bar": 4}, "station": "anvil"},
 ]
 
 # player_inventory = {
@@ -654,6 +692,9 @@ class ScorpionNPC:
 		screen_x = self.rect.x - camera_x
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			if self.state == "windup":
+				warn_text = hud_font.render("!", True, (255, 50, 50))
+				surface.blit(warn_text, (screen_x + TILE_SIZE//2 - warn_text.get_width()//2, screen_y - 25))
 			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
 			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
 				base_col = (255, 215, 0)
@@ -909,16 +950,25 @@ class ZombieNPC:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 						continue
 				if self.rect.colliderect(obj.rect):
-					if dx > 0: self.rect.right = obj.rect.left
-					if dx < 0: self.rect.left = obj.rect.right
+					if dx > 0: 
+						self.rect.right = obj.rect.left
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
+					if dx < 0: 
+						self.rect.left = obj.rect.right
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
+
 		if dy != 0:
 			self.rect.y += dy
 			for obj in active_resources + active_structures:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 						continue
 				if self.rect.colliderect(obj.rect):
-					if dy > 0: self.rect.bottom = obj.rect.top
-					if dy < 0: self.rect.top = obj.rect.bottom
+					if dy > 0: 
+						self.rect.bottom = obj.rect.top
+						self.rect.x += (1 if px > self.rect.centerx else -1) * self.speed
+					if dy < 0: 
+						self.rect.top = obj.rect.bottom
+						self.rect.x += (1 if px > self.rect.centerx else -1) * self.speed
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height,)
 		if self.rect.colliderect(player_rect):
@@ -937,6 +987,12 @@ class ZombieNPC:
 		screen_x = self.rect.x - camera_x
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			px = player_world_x + player_width // 2
+			py = player_world_y + player_height // 2
+			dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
+			if dist < 85 and self.stun_timer <= 0:
+				warn_text = hud_font.render("!", True, (255, 50, 50))
+				surface.blit(warn_text, (screen_x + TILE_SIZE //2 - warn_text.get_width()//2, screen_y - 25))
 			if self.damage_timer > 0:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
@@ -1037,8 +1093,12 @@ class SkeletonNPC:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 						continue
 				if self.rect.colliderect(obj.rect):
-					if dx > 0: self.rect.right = obj.rect.left
-					if dx < 0: self.rect.left = obj.rect.right
+					if dx > 0: 
+						self.rect.right = obj.rect.left
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
+					if dx < 0: 
+						self.rect.left = obj.rect.right
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
 
 		if dy != 0:
 			self.rect.y += dy
@@ -1046,8 +1106,12 @@ class SkeletonNPC:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 						continue
 				if self.rect.colliderect(obj.rect):
-					if dy > 0: self.rect.bottom = obj.rect.top
-					if dy < 0: self.rect.top = obj.rect.bottom
+					if dy > 0: 
+						self.rect.bottom = obj.rect.top
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
+					if dy < 0: 
+						self.rect.top = obj.rect.bottom
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 		if self.rect.colliderect(player_rect):
@@ -1067,6 +1131,12 @@ class SkeletonNPC:
 		screen_x = self.rect.x - camera_x
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <+ SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			px = player_world_x + player_width // 2
+			py = player_world_y + player_height // 2
+			dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
+			if dist < 85 and self.stun_timer <= 0:
+				warn_text = hud_font.render("!", True, (255, 50, 50))
+				surface.blit(warn_text, (screen_x + TILE_SIZE//2 - warn_text.get_width()//2, screen_y - 25))
 			if self.damage_timer > 0:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
@@ -1211,30 +1281,30 @@ class SlimeNPC:
 			if self.damage_timer > 0:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
-				mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-				if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
-					pygame.draw.rect(mob_surf, (255, 215, 0), (0,0, TILE_SIZE, TILE_SIZE), border_radius=12)
-				else:
-					pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=12)
-				pygame.draw.circle(mob_surf, (255, 255, 255, 180), (12, TILE_SIZE - 12), 4)
-				if self.damage_timer > 0:
-					red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-					red_mask.fill((255, 0, 0, 140))
-					mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
-				if self.burn_ticks > 0:
-					burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-					burn_mask.fill((255, 140, 0, 120))
-					mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
-				if self.freeze_ticks > 0:
-					ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-					ice_mask.fill((0, 120, 255, 120))
-					mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
-					surface.blit(mob_surf, (screen_x, screen_y))
-				if self.health < self.max_health:
-					bar_w = TILE_SIZE
-					pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
-					pct = max(0.0, self.health / self.max_health)
-					pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (255, 215, 0), (0,0, TILE_SIZE, TILE_SIZE), border_radius=20)
+			else:
+				pygame.draw.rect(mob_surf, self.color, (0,0, TILE_SIZE, TILE_SIZE), border_radius=20)
+			pygame.draw.circle(mob_surf, (255, 255, 255, 180), (12, TILE_SIZE - 12), 4)
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
 
 class FrostWolfNPC:
 	def __init__(self, world_x, world_y):
@@ -1304,8 +1374,12 @@ class FrostWolfNPC:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 					continue
 				if self.rect.colliderect(obj.rect):
-					if dx > 0: self.rect.right = obj.rect.left
-					if dx < 0: self.rect.left = obj.rect.right
+					if dx > 0: 
+						self.rect.right = obj.rect.left
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
+					if dx < 0: 
+						self.rect.left = obj.rect.right
+						self.rect.y += (1 if py > self.rect.centery else -1) * self.speed
 
 		if dy != 0:
 			self.rect.y += dy
@@ -1313,8 +1387,12 @@ class FrostWolfNPC:
 				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
 					continue
 				if self.rect.colliderect(obj.rect):
-					if dy > 0: self.rect.bottom = obj.rect.top
-					if dy < 0: self.rect.top = obj.rect.bottom
+					if dy > 0: 
+						self.rect.bottom = obj.rect.top
+						self.rect.x += (1 if px > self.rect.centerx else -1) * self.speed
+					if dy < 0: 
+						self.rect.top = obj.rect.bottom
+						self.rect.x += (1 if px > self.rect.centerx else -1) * self.speed
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
@@ -1334,6 +1412,12 @@ class FrostWolfNPC:
 		screen_x = self.rect.x - camera_x
 		screen_y = self.rect.y - camera_y
 		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			px = player_world_x + player_width // 2
+			py = player_world_y + player_height // 2
+			dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
+			if dist < 85 and self.stun_timer <= 0:
+				warn_text = hud_font.render("!", True, (255, 50, 50))
+				surface.blit(warn_text, (screen_x + TILE_SIZE//2 - warn_text.get_width()//2, screen_y - 25))
 			if self.damage_timer > 0:
 				shake_offset = math.sin(self.damage_timer * 5) * 8
 				screen_x += shake_offset
@@ -1368,8 +1452,8 @@ class IceGolemNPC:
 	def __init__(self, world_x, world_y):
 		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE *1.5, TILE_SIZE * 1.5)
 		self.color = (130, 190, 230)
-		self.health = 1000
-		self.max_health = 1000
+		self.health = 1500
+		self.max_health = 1500
 		self.damage_timer = 0
 		self.burn_ticks = 0
 		self.burn_timer = 0
@@ -1395,7 +1479,7 @@ class IceGolemNPC:
 
 
 	def update(self):
-		global player_world_x, player_world_y, player_current_health, player_damage_timer
+		global player_world_x, player_world_y, player_current_health, player_damage_timer, proojectiles
 
 		if self.stun_timer > 0:
 			self.stun_timer -= 1
@@ -1439,14 +1523,35 @@ class IceGolemNPC:
 		if self.state == "roar_windup":
 			dx = 0 
 			dy = 0
-			if self.state_timer >= 300:
+			if self.state_timer >= 90:
 				self.state = "walk"
 				self.state_timer = 0
 				if dist <= self.roar_radius:
-					damage_player(40, self)
+					damage_player(60, self)
 					global player_vel_x, player_vel_y
 					player_vel_x = math.cos(angle) * 32
 					player_vel_y = math.sin(angle) * 32
+
+		elif self.state == "glacial_slam":
+			dx = 0
+			dy = 0
+			if self.state_timer >= 50:
+				self.state = "walk"
+				self.state_timer = 0
+
+				for spread in [-0.25, 0 , 0.25]:
+					proj_ang = angle + spread
+					projectiles.append({
+						"x": self.rect.centerx,
+						"y": self.rect.centery,
+						"dx": math.cos(proj_ang) * 10,
+						"dy": math.sin(proj_ang) * 10,
+						"radius": 10,
+						"color": (240, 248, 255),
+						"is_player_owned": False,
+						"damage": 18,
+						"lifetime": 55
+						})
 
 		elif self.state == "snowball_charge":
 			dx = math.cos(self.charge_angle) * (self.speed * 6.5)
@@ -1457,31 +1562,39 @@ class IceGolemNPC:
 				self.charge_dashes_left -= 1
 				if self.charge_dashes_left > 0:
 					base_angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
-					offset = math.pi / 4 if self.charge_dashes_left % 2 == 0 else -math.pi /4
-					self.charge_angle = base_angle + offset
+					# offset = math.pi / 4 if self.charge_dashes_left % 2 == 0 else -math.pi /4
+					self.charge_angle = base_angle
 				else:
 					self.state = "walk"
 					self.state_timer = 0
 
 		else:
 			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+			current_speed = self.speed
+			if self.freeze_ticks > 0:
+				current_speed *= 0.5
 			dx = math.cos(angle) * self.speed
 			dy = math.sin(angle) * self.speed
 
-			if self.state_timer >= 210:
+			if self.state_timer >= 120:
 				self.state_timer = 0
 				choice = random.random()
 
-				if choice < 0.35:
+				if choice < 0.30:
 					self.state = "roar_windup"
-				elif choice < 0.70:
+				if choice < 0.55:
+					self.state = "glacial_slam"
+				elif choice < 0.80:
 					self.state = "snowball_charge"
 					self.charge_dashes_left = 4
 					base_angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
 					self.charge_angle = base_angle + (math.pi / 4)
 				else:
 					if self.throw_cooldown <= 0:
-						self.throw_cooldown = 150
+						self.throw_cooldown = 120
+						# global player_vel_x, player_vel_y
+						target_x = px + player_vel_x * 12
+						target_y = py + player_vel_y * 12
 						ang = math.atan2(py - self.rect.centery, px - self.rect.centerx)
 						projectiles.append({
 							"x": self.rect.centerx,
@@ -1494,23 +1607,26 @@ class IceGolemNPC:
 							"damage": 22,
 							"lifetime": 45
 							})
-
-		if dx != 0:
+		if self.state != "snowball_charge":
+			if dx != 0:
+				self.rect.x += dx
+				for obj in active_resources + active_structures:
+					if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
+					if self.rect.colliderect(obj.rect):
+						if dx > 0: self.rect.right = obj.rect.left
+						if dx < 0: self.rect.left = obj.rect.right
+			if dy != 0:
+				self.rect.y += dy
+				for obj in active_resources + active_structures:
+					if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+						continue
+					if self.rect.colliderect(obj.rect):
+						if dy > 0: self.rect.bottom = obj.rect.top
+						if dy < 0: self.rect.top = obj.rect.bottom
+		else:
 			self.rect.x += dx
-			for obj in active_resources + active_structures:
-				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
-					continue
-				if self.rect.colliderect(obj.rect):
-					if dx > 0: self.rect.right = obj.rect.left
-					if dx < 0: self.rect.left = obj.rect.right
-		if dy != 0:
 			self.rect.y += dy
-			for obj in active_resources + active_structures:
-				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
-					continue
-				if self.rect.colliderect(obj.rect):
-					if dy > 0: self.rect.bottom = obj.rect.top
-					if dy < 0: self.rect.top = obj.rect.bottom
 
 		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
 		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
@@ -1552,7 +1668,8 @@ class IceGolemNPC:
 				if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
 					pygame.draw.rect(mob_surf, (255, 215, 0), (0,0,w, h), border_radius = 8)
 				else:
-					pygame.draw.rect(mob_surf, self.color, (0,0,w, h), border_radius = 8)
+					g_col = (0, 191, 255) if self.state == "glacial_slam" else self.color
+					pygame.draw.rect(mob_surf, g_col, (0,0,w, h), border_radius = 8)
 				pygame.draw.rect(mob_surf, (160, 210, 245), (4, 4, w-8, h-8), border_radius=6)
 
 			if self.damage_timer > 0:
@@ -1564,6 +1681,10 @@ class IceGolemNPC:
 				burn_mask.fill((255, 140, 0, 120))
 				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
 			surface.blit(mob_surf, (screen_x, screen_y))
+
+			if self.state in ["roar_windup", "glacial_slam"]:
+				warn_text = hud_font.render("!", True, (255, 50, 50))
+				surface.blit(warn_text, (screen_x + w//2 - warn_text.get_width()//2, screen_y - 25))
 			if self.health < self.max_health:
 				pygame.draw.rect(surface, (50, 50, 50), (screen_x, screen_y - 10, w, 6))
 				pct = max(0, self.health / self.max_health)
@@ -1575,12 +1696,13 @@ def damage_player(amount, attacker):
 	if parry_timer > 0:
 		parry_splash_timer = 45
 		parry_splash_text = "PARRIED"
-
-		attacker.knockback_dx = -attacker.knockback_dx * 2.0
-		attacker.knockback_dy = -attacker.knockback_dy * 2.0
-		if hasattr(attacker, "stun_timer"):
-			attacker.stun_timer = 30
-			attacker.damage_timer = 20
+		if attacker:
+			angle = math.atan2(attacker.rect.centery - (player_world_y + player_height//2), attacker.rect.centerx - (player_world_x + player_width//2))
+			attacker.knockback_dx = math.cos(angle) * 35
+			attacker.knockback_dy = math.sin(angle) * 35
+			if hasattr(attacker, "stun_timer"):
+				attacker.stun_timer = 30
+				attacker.damage_timer = 20
 		return
 
 	if is_blocking and shield_cooldown <= 0:
@@ -2258,6 +2380,24 @@ def process_console_cheat_command(command_text):
 		player_current_health = player_max_health
 		print("[CONSOLE CHEAT] Health fully restored!")
 
+	elif base_cmd == "spawn" and len(parts) >= 2:
+		m_type = parts[1].lower()
+		rx = player_world_x + random.randint(-100, 100)
+		ry = player_world_y + random.randint(-100, 100)
+		if m_type == "zombie":
+			active_mobs.append(ZombieNPC(rx, ry))
+		elif m_type == "skeleton":
+			active_mobs.append(SkeletonNPC(rx, ry))
+		elif m_type == "slime":
+			active_mobs.append(SlimeNPC(rx, ry))
+		elif m_type == "frostwolf":
+			active_mobs.append(FrostWolfNPC(rx, ry))
+		elif m_type == "icegolem":
+			active_mobs.append(IceGolemNPC(rx, ry))
+		elif m_type == "cow":
+			active_mobs.append(CowNPC(rx, ry))
+		print(f"[CONSOLE CHEAT] Spawned {m_type} near player.")
+
 	elif base_cmd == "mobs" or base_cmd == "count":
 		show_mob_counter = not show_mob_counter
 		print(f"[CONSOLE CHEAT] Mob Monitor toggled to: {show_mob_counter}")
@@ -2402,7 +2542,7 @@ while True:
 					console_input_text = console_input_text[:-1]
 				else:
 					# Append the actual text character typed
-					if event.unicode:
+					if event.unicode and event.unicode != "`":
 						console_input_text += event.unicode
 			else:			
 				if event.key == pygame.K_e:
