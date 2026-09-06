@@ -44,6 +44,9 @@ current_biome_index = 0
 world_blueprints = {}
 structure_blueprints = {0: [], 1: [], 2:[], 3: []}
 active_resources = []
+toxicity_exposure = 0
+adrenaline_timer = 0
+jungle_mud_pools = {3: set()}
 
 active_structures = []
 player_level = 1
@@ -392,6 +395,22 @@ class Resource:
 			self.color = (70, 130, 180)
 			self.item_yield = "Rimefrost Cobalt Ore"
 			self.max_health = 1900
+		elif self.type == "jungle_vine":
+			self.color = (34, 110, 45)
+			self.item_yield = "Wood"
+			self.max_health = 80
+		elif self.type == "jungle_herb":
+			self.color = (255, 105, 180)
+			self.item_yield = "Jungle Herb"
+			self.max_health = 50
+		elif self.type == "jungle_spore":
+			self.color = (0, 255, 127)
+			self.item_yield = "Jungle Spore"
+			self.max_health = 50
+		elif self.type == "verdant_ore":
+			self.color = (46, 139, 87)
+			self.item_yield = "Verdant Ore"
+			self.max_health = 2400
 		self.health = self.max_health
 
 
@@ -403,6 +422,19 @@ class Resource:
 			if current_biome_index == 2:
 				pygame.draw.rect(surface, (135, 206, 235) if self.type == "tree" else (100, 120, 140) if self.type == "rock" else self.color, draw_rect)
 				pygame.draw.rect(surface, (230, 245, 255), draw_rect, 2)
+			elif self.type == "jungle_vine":
+				pygame.draw.rect(surface, self.color, draw_rect)
+				pygame.draw.line(surface, (15, 60, 20), (screen_x, screen_y), (screen_x + TILE_SIZE, screen_y + TILE_SIZE), 3)
+				pygame.draw.line(surface, (15, 60, 20), (screen_x + TILE_SIZE, screen_y), (screen_x, screen_y + TILE_SIZE), 3)
+			elif self.type == "jungle_herb":
+				pygame.draw.circle(surface, self.color, (screen_x + TILE_SIZE//2, screen_y + TILE_SIZE//2), TILE_SIZE//3)
+				pygame.draw.circle(surface, (255, 255, 255), (screen_x + TILE_SIZE//2, screen_y + TILE_SIZE//2), 4)
+			elif self.type == "jungle_spore":
+				pygame.draw.circle(surface, self.color, (screen_x + TILE_SIZE//2, screen_y + TILE_SIZE//2), TILE_SIZE//4)
+				pygame.draw.circle(surface, (255, 255, 255), (screen_x + TILE_SIZE//2, screen_y + TILE_SIZE//2), TILE_SIZE//6)
+			elif self.type == "verdant_ore":
+				pygame.draw.rect(surface, self.color, draw_rect, border_radius=4)
+				pygame.draw.rect(surface, (100, 255, 100), draw_rect, 2, border_radius=4)
 			else:
 				pygame.draw.rect(surface, self.color, draw_rect)
 active_mobs = []
@@ -1690,6 +1722,270 @@ class IceGolemNPC:
 				pct = max(0, self.health / self.max_health)
 				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(w * pct), 6))
 
+class HornetNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (218, 165, 32)
+		self.health = 240
+		self.max_health = 240
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
+		self.stun_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.is_hostile = True
+		self.attack_power = 12
+		self.shoot_timer = 0
+		self.speed = 2.2 * TILE_SCALE
+
+	def update(self):
+		global player_world_x, player_world_y, projectiles
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			return
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -= 1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
+
+		current_speed = self.speed
+		if self.freeze_ticks > 0:
+			current_speed *= 0.5
+
+		dx, dy = 0, 0
+		if dist > 320:
+			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+			dx = math.cos(angle) * current_speed
+			dy = math.sin(angle) * current_speed
+		elif dist < 180:
+			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+			dx = -math.cos(angle) * current_speed
+			dy = -math.sin(angle) * current_speed
+		else:
+			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx) + math.pi/2
+			dx = math.cos(angle) * (current_speed * 0.5)
+			dy = math.sin(angle) * (current_speed * 0.5)
+
+		if dx != 0:
+			self.rect.x += dx
+			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+					continue
+				if self.rect.colliderect(obj.rect):
+					if dx > 0: self.rect.right = obj.rect.left
+					if dx < 0: self.rect.left = obj.rect.right
+		if dy != 0:
+			self.rect.y += dy
+			for obj in active_resources + active_structures:
+				if isinstance(obj, PlacedStructure) and obj.type == "door_wood" and getattr(obj, "is_open", False):
+					continue
+				if self.rect.colliderect(obj.rect):
+					if dy > 0: self.rect.bottom = obj.rect.top
+					if dy < 0: self.rect.top = obj.rect.bottom
+
+		self.shoot_timer += 1
+		if self.shoot_timer >= 120:
+			self.shoot_timer = 0
+			angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+			projectiles.append({
+				"x": self.rect.centerx,
+				"y": self.rect.centery,
+				"dx": math.cos(angle) * 7.5,
+				"dy": math.sin(angle) * 7.5,
+				"radius": 6,
+				"color": (50, 205, 50),
+				"is_player_owned": False,
+				"damage": 40,
+				"lifetime": 80
+			})
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - TILE_SIZE: self.rect.x = WORLD_WIDTH - TILE_SIZE
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - TILE_SIZE: self.rect.y = WORLD_HEIGHT - TILE_SIZE
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			if self.shoot_timer >= 100:
+				warn_text = hud_font.render("!", True, (0, 255, 100))
+				surface.blit(warn_text, (screen_x + TILE_SIZE//2 - warn_text.get_width()//2, screen_y - 25))
+			
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (255, 215, 0), (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
+			else:
+				pygame.draw.rect(mob_surf, self.color, (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
+			pygame.draw.rect(mob_surf, (20, 20, 20), (0, TILE_SIZE//3, TILE_SIZE, 6))
+			pygame.draw.rect(mob_surf, (20, 20, 20), (0, 2*TILE_SIZE//3, TILE_SIZE, 6))
+			
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+
+class SporeTrapNPC:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, TILE_SIZE, TILE_SIZE)
+		self.color = (139, 0, 139)
+		self.health = 350
+		self.max_health = 350
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
+		self.stun_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.is_hostile = True
+		self.attack_power = 15
+		self.shoot_timer = 0
+		self.is_open = False
+
+	def update(self):
+		global player_world_x, player_world_y, projectiles
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			return
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx * 0.2)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy * 0.2)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.freeze_ticks > 0:
+			self.freeze_timer += 1
+			if self.freeze_timer >= 30:
+				self.health -= 1
+				self.freeze_ticks -= 1
+				self.freeze_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		dist = math.hypot(px - self.rect.centerx, py - self.rect.centery)
+
+		if dist <= 300:
+			self.is_open = True
+			self.shoot_timer += 1
+			if self.shoot_timer >= 120:
+				self.shoot_timer = 0
+				base_angle = math.atan2(py - self.rect.centery, px - self.rect.centerx)
+				for spread in [-0.2, 0, 0.2]:
+					proj_angle = base_angle + spread
+					projectiles.append({
+						"x": self.rect.centerx,
+						"y": self.rect.centery,
+						"dx": math.cos(proj_angle) * 8.5,
+						"dy": math.sin(proj_angle) * 8.5,
+						"radius": 5,
+						"color": (154, 205, 50),
+						"is_player_owned": False,
+						"damage": 50,
+						"lifetime": 70
+					})
+		else:
+			self.is_open = False
+			self.shoot_timer = 0
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		if -TILE_SIZE <= screen_x <= SCREEN_WIDTH and -TILE_SIZE <= screen_y <= SCREEN_HEIGHT:
+			mob_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(mob_surf, (255, 215, 0), (0,0,TILE_SIZE, TILE_SIZE), border_radius=6)
+			else:
+				pygame.draw.circle(mob_surf, (34, 139, 34), (TILE_SIZE//2, TILE_SIZE - 10), 16)
+				if self.is_open:
+					pygame.draw.circle(mob_surf, self.color, (TILE_SIZE//2, TILE_SIZE//2), 14)
+					pygame.draw.circle(mob_surf, (255, 69, 0), (TILE_SIZE//2, TILE_SIZE//2), 6)
+				else:
+					pygame.draw.circle(mob_surf, (46, 139, 87), (TILE_SIZE//2, TILE_SIZE//2), 12)
+
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				mob_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.burn_ticks > 0:
+				burn_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				burn_mask.fill((255, 140, 0, 120))
+				mob_surf.blit(burn_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+			if self.freeze_ticks > 0:
+				ice_mask = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+				ice_mask.fill((0, 120, 255, 120))
+				mob_surf.blit(ice_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+
+			surface.blit(mob_surf, (screen_x, screen_y))
+			if self.health < self.max_health:
+				bar_w = TILE_SIZE
+				pygame.draw.rect(surface, (50,50,50), (screen_x, screen_y - 10, bar_w, 6))
+				pct = max(0.0, self.health / self.max_health)
+				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
+
+
 def damage_player(amount, attacker):
 	global player_current_health, player_damage_timer, shield_cooldown, parry_splash_timer, parry_splash_text
 
@@ -1721,13 +2017,16 @@ def damage_player(amount, attacker):
 		armor_reduction = 0
 		equipped_armor = armor_slot["item"]
 		if equipped_armor == "Leather Armor":
-			armor_reduction = 0.20
+			armor_reduction = 0.05
 		elif equipped_armor == "Iron Armor":
-			armor_reduction = 0.40
+			armor_reduction = 0.15
 		elif equipped_armor == "Solarite Armor":
-			armor_reduction = 0.55
+			armor_reduction = 0.25
 		elif equipped_armor == "Cobalt Armor":
-			armor_reduction = 0.65
+			armor_reduction = 0.35
+		elif equipped_armor == "Verdant Armor":
+			armor_reduction = 0.45
+
 
 		final_damage = max(1, amount * (1 - armor_reduction))
 		player_current_health -= final_damage
@@ -1813,6 +2112,19 @@ def generate_all_biomes_at_start():
 	for biome_idx in range(len(biomes)):
 		world_blueprints[biome_idx] = []
 		occupied_positions = set()
+		if biome_idx == 3:
+			jungle_mud_pools[3] = set()
+			for _ in range(12):
+				cx = (random.randint(200, WORLD_WIDTH - 200) // TILE_SIZE) * TILE_SIZE
+				cy = (random.randint(200, WORLD_HEIGHT - 200) // TILE_SIZE) * TILE_SIZE
+				for dx in range(-3, 4):
+					for dy in range(-3, 4):
+						mx = cx + dx * TILE_SIZE
+						my = cy + dy * TILE_SIZE
+						if 0 <= mx < WORLD_WIDTH and 0 <= my < WORLD_HEIGHT:
+							if random.random() < 0.7:
+								jungle_mud_pools[3].add((mx, my))
+
 		for y in range(0, WORLD_HEIGHT, TILE_SIZE):
 			for x in range(0, WORLD_WIDTH, TILE_SIZE):
 				if abs(x - WORLD_WIDTH // 2) < TILE_SIZE * 3 and abs(y - WORLD_HEIGHT // 2) < TILE_SIZE * 3:
@@ -1907,6 +2219,29 @@ def generate_all_biomes_at_start():
 								]
 								random.shuffle(neighbors)
 								queue.extend(neighbors)
+				elif biome_idx == 3:
+					is_near_mud = (x, y) in jungle_mud_pools[3]
+					if is_near_mud:
+						if random.random() < 0.04:
+							world_blueprints[biome_idx].append({"x": x,"y": y, "type": "verdant_ore"})
+							occupied_positions.add((x, y))
+					else:
+						roll = random.random()
+						if roll < 0.05:
+							world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
+							occupied_positions.add((x, y))
+						elif roll < 0.09:
+							world_blueprints[biome_idx].append({"x": x, "y": y, "type": "jungle_vine"})
+							occupied_positions.add((x, y))
+						elif roll < 0.12:
+							world_blueprints[biome_idx].append({"x": x, "y": y, "type": "rock"})
+							occupied_positions.add((x, y))
+						elif roll < 0.15:
+							world_blueprints[biome_idx].append({"x": x, "y": y, "type": "jungle_herb"})
+							occupied_positions.add((x, y))
+						elif roll < 0.17:
+							world_blueprints[biome_idx].append({"x": x, "y": y, "type": "jungle_spore"})
+							occupied_positions.add((x, y))
 
 					# if random.randint(0, 100) <= 1: # Trees are exceptionally rare
 					# 	world_blueprints[biome_idx].append({"x": x, "y": y, "type": "tree"})
@@ -1975,6 +2310,13 @@ def load_current_biome_objects():
 			active_mobs.append(FrostWolfNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
 		for _ in range(6):
 			active_mobs.append(IceGolemNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
+
+	elif current_biome_index == 3:
+		for _ in range(15):
+			active_mobs.append(HornetNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
+		for _ in range(15):
+			active_mobs.append(SporeTrapNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
+
 # core world setup
 generate_all_biomes_at_start()
 load_current_biome_objects()
@@ -2076,6 +2418,16 @@ def draw_hud_and_inventories(surface):
 		pygame.draw.rect(surface, (0,160,255), (cold_x + 2, cold_y + 2, int((cold_bar_w - 4) * cold_pct), cold_bar_h - 4), border_radius=2)
 	cold_txt = ui_font.render(f"COLD: {int(cold_exposure)}%", True, (160, 220, 255))
 	surface.blit(cold_txt, (cold_x + 5, cold_y - 1))
+
+	toxicity_bar_w, toxicity_bar_h = 200, 12
+	toxicity_x = 20
+	toxicity_y = 74
+	pygame.draw.rect(surface, (30, 45, 30), (toxicity_x, toxicity_y, toxicity_bar_w, toxicity_bar_h), border_radius=3)
+	tox_pct = min(1, max(0, toxicity_exposure / 100))
+	if tox_pct > 0:
+		pygame.draw.rect(surface, (0, 200, 80), (toxicity_x + 2, toxicity_y + 2, int((toxicity_bar_w))))
+	tox_txt = ui_font.render(f"TOXICITY: {int(toxicity_exposure)}%", True, (100, 255, 150))
+	surface.blit(tox_txt, (toxicity_x + 5, toxicity_y - 1))
 
 	if shield_cooldown > 0 or parry_timer > 0:
 		cd_bar_w, cd_bar_h = 200 ,8
@@ -2396,6 +2748,10 @@ def process_console_cheat_command(command_text):
 			active_mobs.append(IceGolemNPC(rx, ry))
 		elif m_type == "cow":
 			active_mobs.append(CowNPC(rx, ry))
+		elif m_type == "hornet":
+			active_mobs.append(HornetNPC(rx, ry))
+		elif m_type == "spore_trap":
+			active_mobs.append(SporeTrapNPC(rx, ry))
 		print(f"[CONSOLE CHEAT] Spawned {m_type} near player.")
 
 	elif base_cmd == "mobs" or base_cmd == "count":
@@ -2583,6 +2939,23 @@ while True:
 				click_world_y = mouse_y + camera_y
 				p_cx = player_world_x + (player_width // 2)
 				p_cy = player_world_y + (player_height // 2)
+				active_item = inventory_slots[selected_hotbar_slot]["item"]
+				if active_item in ["Antidote", "Healing Potion", "Adrenaline Elixir"]:
+					if active_item == "Antidote":
+						toxicity_exposure = -100
+						print("[SYSTEM] Drank Antidote! toxicity levels cleared.")
+					elif active_item == "Healing Potion":
+						player_current_health = min(player_max_health, player_current_health + 40)
+						print("[SYSTEm]  drank Healing Potion! Restored 40 hp.")
+					elif active_item == "Adrenaline Elixir":
+						adrenaline_timer = 900
+						print("[SYSTEM] Drank adrenaline elixir! gained 35% speed boost")
+
+					inventory_slots[selected_hotbar_slot]["count"] -= 1
+					if inventory_slots[selected_hotbar_slot]["count"] <= 0:
+						inventory_slots[selected_hotbar_slot] = {"item": None, "count":0, "color": None}
+					continue
+
 				for struct in active_structures:
 					if struct.rect.collidepoint(click_world_x, click_world_y):
 						dist = math.hypot(p_cx - struct.rect.centerx, p_cy - struct.rect.centery)
@@ -2772,6 +3145,11 @@ while True:
 			active_open_chest = None
 	mouse_pressed = pygame.mouse.get_pressed()
 
+	current_player_speed = player_speed
+	if current_biome_index == 3 and 3 in jungle_mud_pools:
+		p_tile_x = (player_world_x + player_width // 2) // TILE_SIZE * TILE_SIZE
+		p_tile_y = (player_world_y + player_height // 2) // TILE_SIZE * TILE_SIZE
+
 	if mouse_pressed[0] and not is_inventory_open and dragged_item is None:
 		click_world_x = mouse_x + camera_x
 		click_world_y = mouse_y + camera_y
@@ -2781,31 +3159,34 @@ while True:
 
 		active_hand_item = inventory_slots[selected_hotbar_slot]["item"]
 
-		if not is_swinging:
-			is_swinging = True
-			swing_timer = 0
-			swing_angle = math.atan2(click_world_y - player_center_y, click_world_x - player_center_x)
+		if active_hand_item in ["Antidote", "Healing Potion", "Adrenaline Elixir"]:
+			pass
+		else:
+			if not is_swinging:
+				is_swinging = True
+				swing_timer = 0
+				swing_angle = math.atan2(click_world_y - player_center_y, click_world_x - player_center_x)
 
-			swing_direction *= -1
+				swing_direction *= -1
 
-			weapon_meta = ITEM_REGISTRY.get(active_hand_item, ITEM_REGISTRY["Fists"])
-			if "swing_duration" in weapon_meta:
-				swing_duration = weapon_meta["swing_duration"]
-			else:
-				swing_duration = 12
+				weapon_meta = ITEM_REGISTRY.get(active_hand_item, ITEM_REGISTRY["Fists"])
+				if "swing_duration" in weapon_meta:
+					swing_duration = weapon_meta["swing_duration"]
+				else:
+					swing_duration = 12
 
-			if active_hand_item == "Cobalt Sword":
-				projectiles.append({
-					"x": player_world_x + player_width // 2,
-					"y": player_world_y + player_height // 2,
-					"dx": math.cos(swing_angle) * 11,
-					"dy": math.sin(swing_angle) * 11,
-					"radius": 8,
-					"color": (135, 206, 250),
-					"is_player_owned": True,
-					"damage": 10,
-					"lifetime": 45
-				})
+				if active_hand_item == "Cobalt Sword":
+					projectiles.append({
+						"x": player_world_x + player_width // 2,
+						"y": player_world_y + player_height // 2,
+						"dx": math.cos(swing_angle) * 11,
+						"dy": math.sin(swing_angle) * 11,
+						"radius": 8,
+						"color": (135, 206, 250),
+						"is_player_owned": True,
+						"damage": 10,
+						"lifetime": 45
+					})
 
 		if active_hand_item and ITEM_REGISTRY[active_hand_item]["is_structure"]:
 			snap_x = (click_world_x // TILE_SIZE) * TILE_SIZE
@@ -2855,7 +3236,8 @@ while True:
 							"Copper Sword": 11,
 							"Iron Sword": 15,
 							"Solarite Sword": 19,
-							"Cobalt Sword": 23
+							"Cobalt Sword": 23,
+							"Verdant Sword": 27
 						}
 						# base_attack_damage = 5
 						# if active_hand_item == "Wooden Sword":
@@ -2885,6 +3267,9 @@ while True:
 						if active_hand_item == "Cobalt Sword":
 							mob.freeze_ticks = 8
 							mob.freeze_timer= 0
+
+						if active_hand_item == "Verdant Sword":
+							player_current_health = min(player_max_health, player_current_health + 2)
 
 						if is_critical_hit:
 							hit_pause_frames(3)
@@ -2918,6 +3303,12 @@ while True:
 										add_item_to_inventory("Golem Core", ITEM_REGISTRY["Golem Core"]["color"], 1)
 									add_item_to_inventory("Rimefrost Cobalt Ore", ITEM_REGISTRY["Rimefrost Cobalt Ore"]["color"], random.randint(3, 6))
 									process_xp_gain(XP_REWARDS["ice_golem"])
+								elif isinstance(mob, HornetNPC):
+										add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(2, 4))
+										process_xp_gain(XP_REWARDS["hornet"])
+								elif isinstance(mob, SporeTrapNPC):
+									add_item_to_inventory("Jungle Spore", ITEM_REGISTRY["Jungle Spore"]["color"], random.randint(2, 3))
+									process_xp_gain(XP_REWARDS["spore_trap"])
 							else:
 								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
 								process_xp_gain(XP_REWARDS["cow"])
@@ -2957,6 +3348,11 @@ while True:
 					harvest_speed = 5
 				else:
 					harvest_speed = 0
+			elif active_harvest_target.type in ["jungle_herb", "jungle_spore"]:
+				harvest_speed = 10
+			elif active_harvest_target.type == "verdant_ore":
+				if active_hand_item == "Cobalt Pickaxe": harvest_speed = 3
+				elif active_hand_item == "Verdant Pickaxe": harvest_speed = 6
 
 			if harvest_speed > 0:
 				harvest_progress += harvest_speed
@@ -3234,6 +3630,16 @@ while True:
 						active_mobs.append(FrostWolfNPC(rx, ry))
 					else:
 						active_mobs.append(IceGolemNPC(rx, ry))
+	elif current_biome_index == 3:
+		if len(active_mobs) < 8:
+			entity_respawn_timer += 1
+			if entity_respawn_timer >= 400:
+				entity_respawn_timer = 0
+				rx = random.randint(50, WORLD_WIDTH - 50)
+				ry = random.randint(50, WORLD_HEIGHT - 50)
+				if math.hypot(rx - player_world_x, ry - player_world_y) > 400:
+					if random.random() < 0.6: active_mobs.append(HornetNPC(rx, ry))
+					else: active_mobs.append(SporeTrapNPC(rx, ry))
 	else:
 		entity_respawn_timer = 0
 
@@ -3283,13 +3689,23 @@ while True:
 	else:
 		cold_exposure = max(0, cold_exposure - 0.8)
 
-
+	if current_biome_index == 3:
+		is_toxic_immune = (armor_slot["item"] == "Verdant Armor")
+		if is_toxic_immune:
+			toxicity_exposure = max(0, toxicity_exposure - 0.4)
+		else:
+			toxicity_exposure = min(100, toxicity_exposure + 0.15)
+		if toxicity_exposure >= 100:
+			player_current_health -= 0.12
+	else:
+		toxicity_exposure = max(0, toxicity_exposure - 0.3)
 
 
 	is_taking_heat_damage = (current_biome_index == 1 and armor_slot["item"] != "Leather Armor")
 	is_freezing = (current_biome_index == 2 and cold_exposure >= 100)
+	is_poisoned = (current_biome_index == 3 and toxicity_exposure >= 100)
 
-	if player_heal_cooldown <= 0 and not is_taking_heat_damage and not is_freezing:
+	if player_heal_cooldown <= 0 and not is_taking_heat_damage and not is_freezing and not is_poisoned:
 		if player_current_health < player_max_health:
 			player_current_health = min(player_max_health, player_current_health + 0.1)
 
@@ -3313,6 +3729,12 @@ while True:
 
 	# RENDER GRAPHICS
 	screen.fill(biomes[current_biome_index]["grass"])
+	if current_biome_index == 3 and 3 in jungle_mud_pools:
+		for (mx, my) in jungle_mud_pools[3]:
+			if (camera_x - TILE_SIZE <= mx <= camera_x + SCREEN_WIDTH + TILE_SIZE and
+				camera_y - TILE_SIZE <= my <= camera_y + SCREEN_HEIGHT + TILE_SIZE):
+				pygame.draw.rect(screen, (101, 67, 33), (mx - camera_x, my - camera_y, TILE_SIZE, TILE_SIZE))
+	
 	for structure in active_structures:
 		if (camera_x - TILE_SIZE <= structure.rect.x <= camera_x + SCREEN_WIDTH + TILE_SIZE and camera_y - TILE_SIZE <= structure.rect.y <= camera_y + SCREEN_HEIGHT + TILE_SIZE):
 			structure.draw(screen,camera_x, camera_y)
