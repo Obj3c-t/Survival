@@ -72,7 +72,9 @@ XP_REWARDS = {
 	"frost_wolf": 75,
 	"ice_golem": 120,
 	"hornet": 80,
-	"spore_trap": 100
+	"spore_trap": 100,
+	"krogath": 600,
+	"siphon_conduit": 150
 }
 
 respawn_queue = []
@@ -411,6 +413,10 @@ class Resource:
 			self.color = (46, 139, 87)
 			self.item_yield = "Verdant Ore"
 			self.max_health = 2400
+		elif self.type == "siphon_conduit":
+			self.color = (180, 50, 220)
+			self.item_yield = "Jungle Spore"
+			self.max_health = 900
 		self.health = self.max_health
 
 
@@ -435,6 +441,11 @@ class Resource:
 			elif self.type == "verdant_ore":
 				pygame.draw.rect(surface, self.color, draw_rect, border_radius=4)
 				pygame.draw.rect(surface, (100, 255, 100), draw_rect, 2, border_radius=4)
+			elif self.type == "siphon_conduit":
+				pygame.draw.rect(surface, (40, 20, 50), draw_rect, border_radius=6)
+				pygame.draw.circle(surface, self.color, (screen_x + TILE_SIZE//2, screen_y + TILE_SIZE//2), TILE_SIZE//3)
+				pygame.draw.circle(surface, (255, 150, 255), (screen_x + TILE_SIZE//2, screen_y + TILE_SIZE//2), TILE_SIZE // 5)
+				pygame.draw.rect(surface, (220, 100, 255), draw_rect, 2, border_radius=6)
 			else:
 				pygame.draw.rect(surface, self.color, draw_rect)
 active_mobs = []
@@ -1985,6 +1996,173 @@ class SporeTrapNPC:
 				pct = max(0.0, self.health / self.max_health)
 				pygame.draw.rect(surface, (255, 50, 50), (screen_x, screen_y - 10, int(bar_w * pct), 6))
 
+class KroGathBoss:
+	def __init__(self, world_x, world_y):
+		self.rect = pygame.Rect(world_x, world_y, int(TILE_SIZE * 2.2), int(TILE_SIZE * 2.2))
+		self.color = (30, 95, 45)
+		self.health = 6000
+		self.max_health = 6000
+		self.phase = 1
+		self.damage_timer = 0
+		self.burn_ticks = 0
+		self.burn_timer = 0
+		self.freeze_ticks = 0
+		self.freeze_timer = 0
+		self.stun_timer = 0
+		self.knockback_dx = 0
+		self.knockback_dy = 0
+		self.is_hostile = True
+		self.attack_power = 40
+		self.shoot_timer = 0
+		self.charge_timer = 0
+		self.charge_state = "idle"
+		self.charge_angle = 0
+		self.speed = 1.8 * TILE_SCALE
+
+	def update(self):
+		global player_world_x, player_world_y, projectiles, active_resources, toxicity_exposure
+
+		active_conduits = [r for r in active_resources if r.type == "siphon_conduit"]
+		if self.phase == 1 and len(active_conduits) == 0:
+			self.phase = 2
+			self.speed = 2.4 * TILE_SCALE
+			print("[Boss] Krogaths armor has shattered. Phase 2")
+
+		if self.stun_timer > 0:
+			self.stun_timer -= 1
+			self.charge_state = "idle"
+			return
+
+		if abs(self.knockback_dx) > 0.1:
+			self.rect.x += int(self.knockback_dx * 0.4)
+			self.knockback_dx *= 0.8
+		if abs(self.knockback_dy) > 0.1:
+			self.rect.y += int(self.knockback_dy * 0.4)
+			self.knockback_dy *= 0.8
+
+		if self.burn_ticks > 0:
+			self.burn_timer += 1
+			if self.burn_timer >= 30:
+				self.health -= 3
+				self.burn_ticks -= 1
+				self.burn_timer = 0
+				self.damage_timer = 15
+
+		if self.damage_timer > 0:
+			self.damage_timer -= 1
+
+		px = player_world_x + player_width // 2
+		py = player_world_y + player_height // 2
+		angle = math.atan2(py)
+
+		if self.phase == 1 and len(active_conduits) > 0:
+			self.health = min(self.max_health, self.health + 0.3)
+
+		if self.phase == 2 and self.health <= self.max_health * 0.25:
+			toxicity_exposure = min(100, toxicity_exposure + 0.08)
+
+		dx, dy = 0, 0
+		current_speed = self.speed
+		if self.freeze_ticks > 0:
+			current_speed *= 0.6
+
+		if self.phase == 1:
+			self.shoot_timer += 1
+			if self.shoot_timer >= random.randint(20, 90):
+				self.shoot_timer = 0
+				for spread in [-0.25, 0, 0.25]:
+					proj_ang = angle + spread
+					projectiles.append({
+						"x": self.rect.centerx,
+						"y": self.rect.centery,
+						"dx": math.cos(proj_ang) * 9,
+						"dy": math.sin(proj_ang) * 9,
+						"radius": 8,
+						"color": (150, 50, 200),
+						"is_player_owned": False,
+						"damage": 16,
+						"lifetime": 75
+						})
+		else:
+			self.charge_timer += 1
+			if self.charge_state == "idle":
+				dx = math.cos(angle) * current_speed
+				dy = math.sin(angle) * current_speed
+				self.shoot_timer += 1
+				if self.shoot_timer >= 100:
+					self.shoot_timer = 0
+					for spread in [-0.35, -0.15, 0, 0.15, 0.35]:
+						proj_ang = angle + spread
+						projectiles.append({
+							"x": self.rect.centerx,
+							"y": self.rect.centery,
+							"dx": math.cos(proj_ang) * 8.5,
+							"dy": math.sin(proj_ang) * 8.5,
+							"radius": 6,
+							"color": (50, 220, 90),
+							"is_player_owned": False,
+							"damage": 12,
+							"lifetime": 70
+						})
+				if self.charge_timer >= 220:
+					self.charge_state = "windup"
+					self.charge_timer = 0
+			elif self.charge_state == "windup":
+				dx, dy = 0, 0
+				if self.charge_timer >= 45:
+					self.charge_state = "dashing"
+					self.charge_timer = 0
+					self.charge_angle = angle
+			elif self.charge_state == "dashing":
+				dx = math.cos(self.charge_angle) * (current_speed * 4.2)
+				dy = math.sin(self.charge_angle) * (current_speed * 4.2)
+				if self.charge_timer >= 30:
+					self.charge_state = "idle"
+					self.charge_timer = 0
+
+			self.rect.x += dx
+			self.rect.y += dy
+
+		player_rect = pygame.Rect(player_world_x, player_world_y, player_width, player_height)
+		if self.rect.colliderect(player_rect) and player_damage_timer <= 0:
+			dmg = self.attack_power + 15 if self.charge_state == "dashing" else self.attack_power
+			damage_player(dmg, self)
+
+		if self.rect.x < 0: self.rect.x = 0
+		if self.rect.x > WORLD_WIDTH - self.rect.width: self.rect.x = WORLD_WIDTH - self.rect.width
+		if self.rect.y < 0: self.rect.y = 0
+		if self.rect.y > WORLD_HEIGHT - self.rect.height: self.rect.y = WORLD_HEIGHT - self.rect.height
+
+	def draw(self, surface, camera_x, camera_y):
+		screen_x = self.rect.x - camera_x
+		screen_y = self.rect.y - camera_y
+		w, h = self.rect.width, self.rect.height
+		if -w <= screen_x <= SCREEN_WIDTH and -h <= screen_y <= SCREEN_HEIGHT:
+			if self.charge_state == "windup":
+				warn_text = hud_font.render("!", True, (255, 40, 40))
+				surface.blit(warn_text, (screen_x + w//2 - warn_text.get_width()//2, screen_y - 25))
+
+			if self.damage_timer > 0:
+				shake_offset = math.sin(self.damage_timer * 5) * 8
+				screen_x += shake_offset
+
+			boss_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+			if self.stun_timer > 0 and pygame.time.get_ticks() % 120 < 60:
+				pygame.draw.rect(boss_surf, (255, 215, 0), (0,0,w,h), border_radius=12)
+			else:
+				if self.phase == 1:
+					pygame.draw.circle(boss_surf, (25, 70, 35), (w//2, h//2), w//2)
+					pygame.draw.circle(boss_surf, (180, 50, 220), (w//2, h//2), w//2, 4)
+				else:
+					pygame.draw.circle(boss_surf, (40, 120, 60), (w//2, h//2), int(w * 0.45))
+					pygame.draw.circle(boss_surf, (255, 60, 60), (w//2, h//2), int(w * 0.25))
+
+			if self.damage_timer > 0:
+				red_mask = pygame.Surface((w, h), pygame.SRCALPHA)
+				red_mask.fill((255, 0, 0, 140))
+				boss_surf.blit(red_mask, (0,0), special_flags=pygame.BLEND_RGBA_ADD)
+
+			surface.blit(boss_surf, (screen_x, screen_y))
 
 def damage_player(amount, attacker):
 	global player_current_health, player_damage_timer, shield_cooldown, parry_splash_timer, parry_splash_text
@@ -2317,6 +2495,11 @@ def load_current_biome_objects():
 		for _ in range(15):
 			active_mobs.append(SporeTrapNPC(random.randint(100, WORLD_WIDTH - 100), random.randint(100, WORLD_HEIGHT - 100)))
 
+		boss_x = WORLD_WIDTH // 2
+		boss_y = WORLD_HEIGHT // 2
+		active_mobs.append(KroGathBoss(boss_x, boss_y))
+		active_resources.append(Resource(boss_x - 300, boss_y, "siphon_conduit"))
+		active_resources.append(Resource(boss_x + 300, boss_y, "siphon_conduit"))
 # core world setup
 generate_all_biomes_at_start()
 load_current_biome_objects()
@@ -2474,6 +2657,22 @@ def draw_hud_and_inventories(surface):
 
 		txt = hud_font.render("Harvesting...", True, (255,255,255))
 		surface.blit(txt, (SCREEN_WIDTH //2 - txt.get_width() // 2, bar_y - 25))
+
+	for m in active_mobs:
+		if isinstance(m, KroGathBoss):
+			boss_dist = math.hypot(p_cx - m.rect.centerx, p_cy - m.rect.centery)
+			if boss_dist <= 1400:
+				bb_w, bb_h = 600, 22
+				bb_x = (SCREEN_WIDTH // 2) - (bb_w // 2)
+				bb_y = SCREEN_HEIGHT - 100
+				pygame.draw.rect(surface, (20, 20, 20), (bb_x - 4, bb_y - 4, bb_w + 8, bb_h + 8), border_radius=6)
+				pygame.draw.rect(surface, (60, 20, 70), (bb_x, bb_y, bb_w, bb_h), border_radius=4)
+				bpct = max(0.0, m.health / m.max_health)
+				bcolor = (180, 50, 220) if m.phase == 1 else (50, 220, 90)
+				pygame.draw.rect(surface, bcolor, (bb_x, bb_y, int(bb_w * bpct), bb_h), border_radius=4)
+				bname = "KRO'GATH, THE PRIMORDIAL CORE (PHASE 1: SIPHON SHIELD)" if m.phase == 1 else "KRO'GATH (PHASE 2: UNBOUND FURY)"
+				btxt = hud_font.render(bname, True, (255, 255, 255))
+				surface.blit(btxt, (SCREEN_WIDTH // 2 - btxt.get_width() // 2, bb_y - 26))
 	hotbar_w = (slot_size * 4) + (padding * 5)
 	hotbar_h = slot_size + (padding * 2)
 	hotbar_x = (SCREEN_WIDTH // 2) - (hotbar_w // 2)
@@ -2752,6 +2951,10 @@ def process_console_cheat_command(command_text):
 			active_mobs.append(HornetNPC(rx, ry))
 		elif m_type == "spore_trap":
 			active_mobs.append(SporeTrapNPC(rx, ry))
+		elif m_type == "krogath":
+			active_mobs.append(KroGathBoss(rx, ry))
+			active_resources.append(Resource(rx - 250, ry, "siphon_conduit"))
+			active_resources.append(Resource(rx + 250, ry, "siphon_conduit"))
 		print(f"[CONSOLE CHEAT] Spawned {m_type} near player.")
 
 	elif base_cmd == "mobs" or base_cmd == "count":
@@ -3253,6 +3456,10 @@ while True:
 								base_attack_damage *= 2
 								is_critical_hit = True
 
+						if isinstance(mob, KroGathBoss) and mob.phase == 1:
+								base_attack_damage = 0
+								print("[BOSS] Siphon barrier absorbed your attack! Mine the Siphon Conduits with a Pickaxe.")
+
 						mob.health -= base_attack_damage
 						mob.damage_timer = 20
 						# mob.rect.x += math.cos(swing_angle) * 24
@@ -3309,6 +3516,11 @@ while True:
 								elif isinstance(mob, SporeTrapNPC):
 									add_item_to_inventory("Jungle Spore", ITEM_REGISTRY["Jungle Spore"]["color"], random.randint(2, 3))
 									process_xp_gain(XP_REWARDS["spore_trap"])
+								elif isinstance(mob, KroGathBoss):
+										add_item_to_inventory("Verdant Ore", ITEM_REGISTRY["Verdant Ore"]["color"], 12)
+										add_item_to_inventory("Golem Core", ITEM_REGISTRY["Golem Core"]["color"], 2)
+										process_xp_gain(XP_REWARDS["krogath"])
+										print(">>> SUCESS: Kro'Gath has been defeated! The Jungle is purged. <<<")
 							else:
 								add_item_to_inventory("Leather", ITEM_REGISTRY["Leather"]["color"], random.randint(1, 2))
 								process_xp_gain(XP_REWARDS["cow"])
@@ -3353,6 +3565,12 @@ while True:
 			elif active_harvest_target.type == "verdant_ore":
 				if active_hand_item == "Cobalt Pickaxe": harvest_speed = 3
 				elif active_hand_item == "Verdant Pickaxe": harvest_speed = 6
+			elif active_harvest_target.type == "siphon_conduit":
+					if active_hand_item == "Verdant Pickaxe": harvest_speed = 10
+					elif active_hand_item == "Cobalt Pickaxe": harvest_speed = 7
+					elif active_hand_item == "Solarite Pickaxe": harvest_speed = 5
+					elif active_hand_item == "Iron Pickaxe": harvest_speed = 3
+					else: harvest_speed = 0
 
 			if harvest_speed > 0:
 				harvest_progress += harvest_speed
@@ -3770,9 +3988,12 @@ while True:
 		if proj["is_player_owned"]:
 			for mob in list(active_mobs):
 				if proj_rect.colliderect(mob.rect):
-					mob.health -= proj["damage"]
-					mob.damage_timer = 15
-					mob.freeze_ticks = 4
+					if isinstance(mob, KroGathBoss) and mob.phase == 1:
+						pass
+					else:
+						mob.health -= proj["damage"]
+						mob.damage_timer = 15
+						mob.freeze_ticks = 4
 					if proj in projectiles:
 						projectiles.remove(proj)
 					break
