@@ -1,5 +1,5 @@
 # FORGEBOUND (Alpha Build v0.1.0)
-*A 2D top-down survival sandbox RPG built in Python with Pygame for the STARDANCE program*
+*A 2D top-down survival sandbox built in Python with Pygame for the STARDANCE program*
 
 
 ## 1. Game Overview
