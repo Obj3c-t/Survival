@@ -1,6 +1,10 @@
 # FORGEBOUND (Alpha Build v0.1.0)
 *A 2D top-down survival sandbox built in Python with Pygame for the STARDANCE program*
 
+## TO PLAY
+
+- unfortunately, it's currently way too laggy and unoptimized to be played on a website so the only way I was able to get it running smoothly was to publish it on the **RELEASES** section as an exe file, compiled with pyinstaller
+- simply download the exe and launch it, I can reassure you that it is safe and will not harm your computer in any way
 
 ## 1. Game Overview
 # FORGEBOUND
